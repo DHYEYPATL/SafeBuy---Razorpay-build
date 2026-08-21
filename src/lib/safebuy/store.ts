@@ -3,8 +3,9 @@ import { persist } from "zustand/middleware";
 import { CATALOG } from "./catalog";
 import { runGuardrail } from "./guardrail";
 import { GENESIS_HASH, hashRecord } from "./hash";
-import { parseIntentDeterministic } from "./parse-intent";
+import { coerceIntent, parseIntentDeterministic } from "./parse-intent";
 import { planCart } from "./plan";
+import { fetchRazorpayPayment, parseIntentWithGrok } from "./razorpay-api";
 import {
   AFA_EXEMPT_PAISE,
   DEMO_NOTIFY_WINDOW_MS,
@@ -35,10 +36,13 @@ interface SafeBuyState {
   pendingAttemptId: string | null;
   correlationId: string | null;
   razorpayKeyId: string;
+  hasSecret: boolean;
+  isConfigured: boolean;
+  confirmedPaymentIds: string[];
   lastExplain: string;
   stockOverride: Record<string, number>;
   hydrateOk: boolean;
-  setRazorpayKey: (k: string) => void;
+  setRazorpayKeyDetails: (k: { keyId: string; hasSecret: boolean; configured: boolean }) => void;
   setLabInject: (i: LabInject) => void;
   createMandate: (m: Omit<Mandate, "id" | "status" | "spentPaise" | "remainingPaise" | "createdAt" | "revokedAt" | "afaSimulatedAt" | "afaMethod"> & { remainingPaise?: number }) => Promise<void>;
   revokeMandate: () => Promise<void>;
@@ -46,8 +50,19 @@ interface SafeBuyState {
   runInstruction: (text: string, parsed?: StructuredIntent) => Promise<void>;
   tickWindow: () => void;
   confirmAfaOverride: () => Promise<void>;
+  confirmSemanticOverride: () => Promise<void>;
   startExecute: (opts?: { razorpayOrderId?: string | null; forceFail?: FailureKind }) => Promise<void>;
-  confirmPayment: (paymentId: string, orderId: string | null) => Promise<void>;
+  handleHandlerReceived: (paymentId: string, orderId: string | null, signature?: string) => Promise<void>;
+  startReconcile: (attemptId: string, paymentId: string, orderId: string | null) => Promise<void>;
+  applyConfirm: (opts: {
+    attemptId?: string;
+    paymentId: string;
+    orderId?: string | null;
+    amountPaise?: number;
+    signature?: string | null;
+    status?: string;
+    source: "fetch" | "webhook";
+  }) => Promise<void>;
   failClosed: (reason: string) => Promise<void>;
   abortPending: (reason: string) => Promise<void>;
   resetDemo: () => void;
@@ -55,6 +70,10 @@ interface SafeBuyState {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export const useSafeBuy = create<SafeBuyState>()(
@@ -71,11 +90,21 @@ export const useSafeBuy = create<SafeBuyState>()(
       pendingIntent: null,
       pendingAttemptId: null,
       correlationId: null,
-      razorpayKeyId: "rzp_test_1DP5mmOlF5G5ag",
+      razorpayKeyId: "",
+      hasSecret: false,
+      isConfigured: false,
+      confirmedPaymentIds: [],
       lastExplain: "Idle. Create a mandate, then instruct the agent.",
       stockOverride: {},
       hydrateOk: false,
-      setRazorpayKey: (k) => set({ razorpayKeyId: k }),
+
+      setRazorpayKeyDetails: (k) =>
+        set({
+          razorpayKeyId: k.keyId,
+          hasSecret: k.hasSecret,
+          isConfigured: k.configured,
+        }),
+
       setLabInject: (i) => set({ labInject: i }),
 
       appendAudit: async (partial) => {
@@ -173,8 +202,27 @@ export const useSafeBuy = create<SafeBuyState>()(
           });
           return;
         }
+
         const cid = newId("cor");
-        const intent = parsed ?? parseIntentDeterministic(text);
+        let intent: StructuredIntent;
+        let intentSource: "grok" | "deterministic" = "deterministic";
+
+        if (parsed) {
+          intent = parsed;
+        } else {
+          try {
+            const grokRes = await parseIntentWithGrok({ data: { text } });
+            if (grokRes.ok && grokRes.source === "grok" && grokRes.intent) {
+              intent = coerceIntent(grokRes.intent, text);
+              intentSource = "grok";
+            } else {
+              intent = parseIntentDeterministic(text);
+            }
+          } catch {
+            intent = parseIntentDeterministic(text);
+          }
+        }
+
         set({
           phase: "planning",
           correlationId: cid,
@@ -184,17 +232,18 @@ export const useSafeBuy = create<SafeBuyState>()(
             { id: newId("msg"), role: "user", text, ts: nowIso() },
           ],
         });
+
         await get().appendAudit({
           correlationId: cid,
           phase: "planning",
           event: "intent.parsed",
           layer: "live",
-          explain: `Structured intent captured for “${text}”. Guardrail will diff the cart against this object, not raw text.`,
-          payload: { intent },
+          explain: `Structured intent captured via ${intentSource} for “${text}”. Guardrail will diff the cart against this schema object, not raw text.`,
+          payload: { intent, source: intentSource },
         });
 
         const injectMismatch = get().labInject === "semantic_mismatch";
-        let cart = planCart(mandate, intent, injectMismatch);
+        let cart = planCart(mandate, intent, injectMismatch, [], get().stockOverride);
 
         if (get().labInject === "afa_threshold") {
           cart = {
@@ -204,18 +253,73 @@ export const useSafeBuy = create<SafeBuyState>()(
           };
         }
 
+        // P1-2: Stock Race handling with next-best in-mandate re-plan
         if (get().labInject === "stock_race") {
-          const sku = cart.lines[0]?.sku;
-          if (sku) {
-            set({ stockOverride: { ...get().stockOverride, [sku]: 0 } });
+          const firstSku = cart.lines[0]?.sku;
+          if (firstSku) {
+            const newOverrides = { ...get().stockOverride, [firstSku]: 0 };
+            set({ stockOverride: newOverrides });
             await get().appendAudit({
               correlationId: cid,
               phase: "planning",
               event: "stock.race_injected",
               layer: "synthetic",
-              explain: `Lab: stock of ${sku} dropped to 0 after discovery.`,
-              payload: { sku },
+              explain: `Lab: stock of SKU ${firstSku} dropped to 0 after discovery.`,
+              payload: { sku: firstSku },
             });
+            await get().appendAudit({
+              correlationId: cid,
+              phase: "planning",
+              event: "stock.unavailable",
+              layer: "live",
+              explain: `Product ${firstSku} became unavailable. Seeking next-best in-mandate SKU.`,
+              payload: { sku: firstSku },
+            });
+
+            // Re-plan excluding the unavailable SKU
+            const cartNextBest = planCart(mandate, intent, false, [firstSku], newOverrides);
+            const guardNextBest = runGuardrail({
+              lines: cartNextBest.lines,
+              totalPaise: cartNextBest.totalPaise,
+              mandate,
+              intent,
+            });
+
+            if (guardNextBest.ok && cartNextBest.lines.length) {
+              const nextSku = cartNextBest.lines[0]?.sku;
+              await get().appendAudit({
+                correlationId: cid,
+                phase: "planning",
+                event: "stock.next_best",
+                layer: "live",
+                explain: `Stock race recovery: automatically replaced ${firstSku} with next-best in-mandate item ${nextSku}.`,
+                payload: { fromSku: firstSku, toSku: nextSku, cart: cartNextBest },
+              });
+              cart = cartNextBest;
+            } else {
+              await get().appendAudit({
+                correlationId: cid,
+                phase: "failed",
+                event: "plan.empty",
+                layer: "live",
+                explain: "No alternative in-mandate SKU was available. Purchase stopped before debit.",
+                payload: { excludedSku: firstSku },
+              });
+              set({
+                phase: "failed",
+                pendingCart: null,
+                chat: [
+                  ...get().chat,
+                  {
+                    id: newId("msg"),
+                    role: "agent",
+                    ts: nowIso(),
+                    text: "Stopped. The selected item is out of stock and no in-mandate alternative was found. No payment was initiated.",
+                  },
+                ],
+              });
+              return;
+            }
           }
         }
 
@@ -240,31 +344,6 @@ export const useSafeBuy = create<SafeBuyState>()(
           return;
         }
 
-        if (get().labInject === "stock_race") {
-          await get().appendAudit({
-            correlationId: cid,
-            phase: "failed",
-            event: "stock.unavailable",
-            layer: "live",
-            explain: "Product became unavailable between discovery and execution. Debit aborted.",
-            payload: { sku: cart.lines[0]?.sku },
-          });
-          set({
-            phase: "failed",
-            pendingCart: null,
-            chat: [
-              ...get().chat,
-              {
-                id: newId("msg"),
-                role: "agent",
-                ts: nowIso(),
-                text: "Stopped. The selected SKU went out of stock after discovery. No payment was started.",
-              },
-            ],
-          });
-          return;
-        }
-
         const guard = runGuardrail({
           lines: cart.lines,
           totalPaise: cart.totalPaise,
@@ -281,7 +360,8 @@ export const useSafeBuy = create<SafeBuyState>()(
           payload: { guard, cart },
         });
 
-        if (!guard.ok && guard.code === "afa_threshold") {
+        // P1-3: Needs human confirmation (AFA > 15k or Semantic Intent Mismatch)
+        if (!guard.ok && guard.needsHumanConfirm) {
           const attempt: PurchaseAttempt = {
             id: newId("att"),
             correlationId: cid,
@@ -289,9 +369,13 @@ export const useSafeBuy = create<SafeBuyState>()(
             cart,
             intent,
             phase: "needs_confirm",
-            failure: "afa_threshold",
+            failure: guard.code === "pass" ? "none" : guard.code,
             razorpayOrderId: null,
             razorpayPaymentId: null,
+            razorpaySignature: null,
+            razorpayStatus: "none",
+            confirmSource: "none",
+            attemptsCharge: 0,
             notifyAt: null,
             executeAt: null,
             confirmedAt: null,
@@ -307,7 +391,7 @@ export const useSafeBuy = create<SafeBuyState>()(
                 id: newId("msg"),
                 role: "agent",
                 ts: nowIso(),
-                text: `${guard.title}. Confirm to proceed, or change the cart.`,
+                text: `${guard.title} — ${guard.detail}. Confirmation required to proceed.`,
               },
             ],
           });
@@ -340,11 +424,16 @@ export const useSafeBuy = create<SafeBuyState>()(
           failure: "none",
           razorpayOrderId: null,
           razorpayPaymentId: null,
+          razorpaySignature: null,
+          razorpayStatus: "none",
+          confirmSource: "none",
+          attemptsCharge: 0,
           notifyAt: nowIso(),
           executeAt: null,
           confirmedAt: null,
           createdAt: nowIso(),
         };
+
         set({
           phase: "notify",
           pendingAttemptId: attempt.id,
@@ -360,6 +449,7 @@ export const useSafeBuy = create<SafeBuyState>()(
             },
           ],
         });
+
         await get().appendAudit({
           correlationId: cid,
           phase: "notify",
@@ -411,6 +501,27 @@ export const useSafeBuy = create<SafeBuyState>()(
         set({ phase: "window" });
       },
 
+      confirmSemanticOverride: async () => {
+        const attempt = get().attempts.find((a) => a.id === get().pendingAttemptId);
+        if (!attempt) return;
+        await get().appendAudit({
+          correlationId: attempt.correlationId,
+          phase: "needs_confirm",
+          event: "semantic.human_override",
+          layer: "live",
+          explain: "Human explicitly reviewed and approved a cart with an intent mismatch.",
+          payload: { attemptId: attempt.id, cart: attempt.cart },
+        });
+        set({
+          phase: "notify",
+          windowMsLeft: DEMO_NOTIFY_WINDOW_MS,
+          attempts: get().attempts.map((a) =>
+            a.id === attempt.id ? { ...a, phase: "notify", notifyAt: nowIso() } : a,
+          ),
+        });
+        set({ phase: "window" });
+      },
+
       startExecute: async (opts) => {
         const st = get();
         const attempt = st.attempts.find((a) => a.id === st.pendingAttemptId);
@@ -440,77 +551,178 @@ export const useSafeBuy = create<SafeBuyState>()(
           return;
         }
 
-        if (st.labInject === "soft_decline" || opts?.forceFail === "soft_decline") {
-          await st.appendAudit({
-            correlationId: attempt.correlationId,
-            phase: "execute",
-            event: "payment.soft_decline",
-            layer: "live",
-            explain: "Soft decline injected. Status will be fetched before any retry. No second charge without reconciliation.",
-            payload: { attemptId: attempt.id },
-          });
-          set({
-            phase: "failed",
-            attempts: st.attempts.map((a) =>
-              a.id === attempt.id ? { ...a, phase: "failed", failure: "soft_decline" } : a,
-            ),
-            chat: [
-              ...st.chat,
-              {
-                id: newId("msg"),
-                role: "agent",
-                ts: nowIso(),
-                text: "Razorpay returned a soft decline. Fetched status first — still failed. Stopped. No retry storm.",
-              },
-            ],
-          });
-          return;
-        }
-
         set({
           phase: "execute",
           attempts: st.attempts.map((a) =>
             a.id === attempt.id
-              ? { ...a, phase: "execute", executeAt: nowIso(), razorpayOrderId: opts?.razorpayOrderId ?? a.razorpayOrderId }
+              ? {
+                  ...a,
+                  phase: "execute",
+                  executeAt: nowIso(),
+                  razorpayOrderId: opts?.razorpayOrderId ?? a.razorpayOrderId,
+                }
               : a,
           ),
         });
-        await st.appendAudit({
-          correlationId: attempt.correlationId,
-          phase: "execute",
-          event: "razorpay.execute_open",
-          layer: "live",
-          explain: "Opening real Razorpay test-mode Checkout after the notify window. This is the actual money movement.",
-          payload: {
-            amountPaise: cart.totalPaise,
-            orderId: opts?.razorpayOrderId ?? null,
-          },
-        });
       },
 
-      confirmPayment: async (paymentId, orderId) => {
+      handleHandlerReceived: async (paymentId, orderId, signature) => {
         const st = get();
         const attempt = st.attempts.find((a) => a.id === st.pendingAttemptId);
-        const mandate = st.mandate;
-        const cart = st.pendingCart;
-        if (!attempt || !cart) return;
+        if (!attempt) return;
 
-        const remaining = Math.max(0, (mandate?.remainingPaise ?? 0) - cart.totalPaise);
-        const spent = (mandate?.spentPaise ?? 0) + cart.totalPaise;
+        set({
+          phase: "pending",
+          attempts: st.attempts.map((a) =>
+            a.id === attempt.id
+              ? {
+                  ...a,
+                  phase: "pending",
+                  razorpayPaymentId: paymentId,
+                  razorpayOrderId: orderId ?? a.razorpayOrderId,
+                  razorpaySignature: signature ?? null,
+                  razorpayStatus: "pending",
+                  confirmSource: "handler_unverified",
+                }
+              : a,
+          ),
+        });
+
+        await st.appendAudit({
+          correlationId: attempt.correlationId,
+          phase: "pending",
+          event: "razorpay.handler_received",
+          layer: "live",
+          explain: `Checkout handler received payment ID ${paymentId}. Pending backend status verification. Mandate will not change until verified captured.`,
+          payload: { paymentId, orderId },
+        });
+
+        // Start reconciliation loop
+        void st.startReconcile(attempt.id, paymentId, orderId);
+      },
+
+      startReconcile: async (attemptId, paymentId, orderId) => {
+        const maxPolls = 6;
+        const pollInterval = 2000;
+
+        for (let i = 0; i < maxPolls; i++) {
+          await delay(pollInterval);
+          const st = get();
+          // If already confirmed (e.g. by webhook race)
+          if (st.confirmedPaymentIds.includes(paymentId)) return;
+
+          const isSoftDeclineLab = st.labInject === "soft_decline";
+
+          if (isSoftDeclineLab) {
+            // Lab inject simulation through fetch reconciliation path
+            await st.appendAudit({
+              correlationId: st.correlationId ?? "",
+              phase: "pending",
+              event: "payment.soft_decline",
+              layer: "live",
+              explain: "Fetched status from Razorpay: status is failed (soft decline). No double-charge without reconciliation.",
+              payload: { paymentId, pollAttempt: i + 1, retryCount: 0 },
+            });
+
+            // Single retry cap check
+            const attempt = st.attempts.find((a) => a.id === attemptId);
+            if (attempt && attempt.attemptsCharge === 0) {
+              set({
+                attempts: st.attempts.map((a) =>
+                  a.id === attemptId
+                    ? { ...a, attemptsCharge: 1, razorpayStatus: "failed", failure: "soft_decline" }
+                    : a,
+                ),
+              });
+              await st.failClosed("Payment returned soft decline. Status verified as failed. Single retry policy exhausted.");
+              return;
+            }
+          }
+
+          try {
+            const res = await fetchRazorpayPayment({ data: { paymentId } });
+            if (res.ok && (res.status === "captured" || res.status === "authorized")) {
+              await st.applyConfirm({
+                attemptId,
+                paymentId,
+                orderId,
+                status: res.status,
+                source: "fetch",
+              });
+              return;
+            } else if (res.ok && (res.status === "failed" || res.status === "cancelled" || res.status === "refunded")) {
+              await st.failClosed(`Payment ended in status '${res.status}'. Debit failed.`);
+              return;
+            }
+          } catch {
+            // continue polling until timeout
+          }
+        }
+
+        // Timed out
+        const finalSt = get();
+        if (!finalSt.confirmedPaymentIds.includes(paymentId)) {
+          await finalSt.failClosed("Payment status check timed out (fail-closed). Any late webhook capture will reconcile safely.");
+        }
+      },
+
+      applyConfirm: async (opts) => {
+        const st = get();
+        const { paymentId, orderId, source, status = "captured" } = opts;
+
+        // Idempotency check: if payment_id already confirmed, do not apply twice
+        if (st.confirmedPaymentIds.includes(paymentId)) {
+          await st.appendAudit({
+            correlationId: st.correlationId ?? newId("cor"),
+            phase: st.phase,
+            event: "razorpay.duplicate_ignored",
+            layer: "live",
+            explain: `Duplicate confirmation for payment ${paymentId} via ${source} safely ignored. Mandate preserved.`,
+            payload: { paymentId, source },
+          });
+          return;
+        }
+
+        const attempt = opts.attemptId
+          ? st.attempts.find((a) => a.id === opts.attemptId)
+          : st.attempts.find((a) => a.razorpayPaymentId === paymentId || a.razorpayOrderId === orderId);
+
+        const cart = attempt?.cart ?? st.pendingCart;
+        if (!cart) return;
+
+        const mandate = st.mandate;
+        const totalPaise = cart.totalPaise;
+        const remaining = Math.max(0, (mandate?.remainingPaise ?? 0) - totalPaise);
+        const spent = (mandate?.spentPaise ?? 0) + totalPaise;
+
         if (mandate) {
           set({
             mandate: { ...mandate, remainingPaise: remaining, spentPaise: spent },
           });
         }
+
+        // Decrement live inventory stock
+        const newStockOverride = { ...st.stockOverride };
+        for (const line of cart.lines) {
+          const currentStock = line.sku in newStockOverride ? newStockOverride[line.sku]! : (CATALOG.find((c) => c.sku === line.sku)?.stock ?? 0);
+          newStockOverride[line.sku] = Math.max(0, currentStock - line.quantity);
+        }
+
+        const isLateReconcile = attempt?.phase === "failed";
+
         set({
           phase: "confirmed",
+          stockOverride: newStockOverride,
+          confirmedPaymentIds: [...st.confirmedPaymentIds, paymentId],
           attempts: st.attempts.map((a) =>
-            a.id === attempt.id
+            a.id === (attempt?.id ?? st.pendingAttemptId)
               ? {
                   ...a,
                   phase: "confirmed",
                   razorpayPaymentId: paymentId,
                   razorpayOrderId: orderId ?? a.razorpayOrderId,
+                  razorpayStatus: "captured",
+                  confirmSource: source,
                   confirmedAt: nowIso(),
                 }
               : a,
@@ -521,17 +733,20 @@ export const useSafeBuy = create<SafeBuyState>()(
               id: newId("msg"),
               role: "agent",
               ts: nowIso(),
-              text: `Paid via Razorpay test-mode. Payment ${paymentId}. Remaining mandate ₹${remaining / 100}.`,
+              text: `Payment confirmed via ${source} (status: ${status}). Payment ID: ${paymentId}. Remaining mandate: ₹${remaining / 100}.`,
             },
           ],
         });
-        await get().appendAudit({
-          correlationId: attempt.correlationId,
+
+        await st.appendAudit({
+          correlationId: attempt?.correlationId ?? st.correlationId ?? newId("cor"),
           phase: "confirmed",
-          event: "razorpay.confirmed",
+          event: isLateReconcile ? "razorpay.reconciled_after_fail_closed" : "razorpay.confirmed",
           layer: "live",
-          explain: `Webhook/handler confirmed payment ${paymentId}. Audit closed. Remaining cap ₹${remaining / 100}.`,
-          payload: { paymentId, orderId, remainingPaise: remaining },
+          explain: isLateReconcile
+            ? `Late ${source} confirmation for previously unconfirmed attempt. Mandate reconciled accurately.`
+            : `Payment ${paymentId} verified and captured via ${source}. Mandate debited by ₹${totalPaise / 100}.`,
+          payload: { paymentId, orderId, remainingPaise: remaining, source, status },
         });
       },
 
@@ -590,7 +805,8 @@ export const useSafeBuy = create<SafeBuyState>()(
           pendingIntent: null,
           pendingAttemptId: null,
           correlationId: null,
-          lastExplain: "Demo reset.",
+          confirmedPaymentIds: [],
+          lastExplain: "Demo reset to pristine baseline.",
           stockOverride: {},
         });
       },
@@ -603,6 +819,8 @@ export const useSafeBuy = create<SafeBuyState>()(
         attempts: s.attempts,
         chat: s.chat,
         razorpayKeyId: s.razorpayKeyId,
+        stockOverride: s.stockOverride,
+        confirmedPaymentIds: s.confirmedPaymentIds,
       }),
     },
   ),

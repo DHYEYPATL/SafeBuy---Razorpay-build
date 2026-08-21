@@ -140,6 +140,10 @@ export interface PurchaseAttempt {
   failure: FailureKind;
   razorpayOrderId: string | null;
   razorpayPaymentId: string | null;
+  razorpaySignature: string | null;
+  razorpayStatus: "none" | "created" | "pending" | "captured" | "failed" | "unknown";
+  confirmSource: "none" | "handler_unverified" | "fetch" | "webhook";
+  attemptsCharge: number;
   notifyAt: string | null;
   executeAt: string | null;
   confirmedAt: string | null;
