@@ -345,6 +345,42 @@ function agentCatalogPlugin(): Plugin {
             return;
           }
 
+          // 5. Agent Identity Registration: /api/agents/register
+          if (pathOnly === "/api/agents/register" && (req.method ?? "").toUpperCase() === "POST") {
+            const chunks: Buffer[] = [];
+            for await (const chunk of req) {
+              chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+            }
+            const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+            const idMod = (await server.ssrLoadModule("/src/lib/safebuy/identity.ts")) as typeof import("./src/lib/safebuy/identity");
+
+            const identity = idMod.registerAgentIdentity({
+              publicKey: String(body.publicKey || ""),
+              operatorName: String(body.operatorName || "Autonomous Agent"),
+              actingFor: body.actingFor ? String(body.actingFor) : null,
+            });
+
+            res.statusCode = 201;
+            res.setHeader("content-type", "application/json");
+            res.setHeader("access-control-allow-origin", "*");
+            res.end(JSON.stringify({ ok: true, identity }));
+            return;
+          }
+
+          // 6. Agent Identity Lookup: /api/agents/identity
+          if (pathOnly.startsWith("/api/agents/identity")) {
+            const urlObj = new URL(rawUrl, "http://localhost:8080");
+            const agentId = urlObj.searchParams.get("agentId") || "agent_safebuy_default";
+            const idMod = (await server.ssrLoadModule("/src/lib/safebuy/identity.ts")) as typeof import("./src/lib/safebuy/identity");
+            const identity = idMod.lookupAgentIdentity(agentId);
+
+            res.statusCode = identity ? 200 : 404;
+            res.setHeader("content-type", "application/json");
+            res.setHeader("access-control-allow-origin", "*");
+            res.end(JSON.stringify(identity ? { ok: true, identity } : { ok: false, error: "AgentNotFound" }));
+            return;
+          }
+
           next();
         } catch (err) {
           console.error("[app-builder] agent-catalog error:", err);

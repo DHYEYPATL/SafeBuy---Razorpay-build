@@ -11,7 +11,7 @@ Execute in project root:
 # 1. Typecheck: Zero compiler errors
 npm run typecheck
 
-# 2. Automated Unit Tests: 29/29 tests passing
+# 2. Automated Unit Tests: 33/33 tests passing
 npm run test:unit
 
 # 3. Third-Party Agent Discovery Demonstration (Zero SafeBuy internal imports)
@@ -33,27 +33,31 @@ ok 7 - Guardrail: blocks on denied brand
 ok 8 - Hash Chain: creates deterministic SHA-256 hashes
 ok 9 - Hash Chain: validates sequential unbroken chain
 ok 10 - Hash Chain: detects tampering and invalid prevHash
-ok 11 - MCP: tools list contains all 6 core agent tools
-ok 12 - MCP: search_catalog returns structured SKU list matching tokens
-ok 13 - MCP: propose_purchase succeeds for valid intent within mandate
-ok 14 - MCP: adversarial intent string cannot bypass deterministic guardrail (Edge Case 9)
-ok 15 - MCP: rejects propose_purchase if mandate does not exist (cannot mint mandates)
-ok 16 - MerchantOrder: initializes in reserved state with stock hold
-ok 17 - PreDebitNotice: creates valid notice record with future execution threshold
-ok 18 - PlanCart: picks lowest price matching SKU based on packTokens
-ok 19 - PlanCart: asks clarification when budget is lower than any available SKU
-ok 20 - PlanCart: respects excludeSkus during stock race recovery
-ok 21 - Signature: verifies valid Razorpay Checkout HMAC signature
-ok 22 - Signature: rejects forged or mismatched Checkout signature
-ok 23 - Signature: verifies valid Razorpay webhook raw body signature
-ok 24 - Upsell: surfaces 5kg economy pack with unit-price savings within mandate limit
-ok 25 - Upsell: rejects candidate if total price exceeds remaining mandate cap
-ok 26 - Upsell: rejects candidate if total price exceeds user explicit prompt budget
-ok 27 - Upsell: rejects candidate if brand is denied in policy
-ok 28 - x402: returns 402 challenge with valid orderId and amount
-ok 29 - x402: issues short-lived token upon settlement and validates token
-1..29
-# tests 29, pass 29, fail 0
+ok 11 - Identity: registers new agent identity with public key and initial trust score
+ok 12 - Identity: verifies valid signed message and rejects forged signature (Edge Case 10)
+ok 13 - Identity: computes derived trust score from audit history
+ok 14 - Identity: outbound payload redaction never leaks private mandate ceilings (Edge Case 13)
+ok 15 - MCP: tools list contains all 6 core agent tools
+ok 16 - MCP: search_catalog returns structured SKU list matching tokens
+ok 17 - MCP: propose_purchase succeeds for valid intent within mandate
+ok 18 - MCP: adversarial intent string cannot bypass deterministic guardrail (Edge Case 9)
+ok 19 - MCP: rejects propose_purchase if mandate does not exist (cannot mint mandates)
+ok 20 - MerchantOrder: initializes in reserved state with stock hold
+ok 21 - PreDebitNotice: creates valid notice record with future execution threshold
+ok 22 - PlanCart: picks lowest price matching SKU based on packTokens
+ok 23 - PlanCart: asks clarification when budget is lower than any available SKU
+ok 24 - PlanCart: respects excludeSkus during stock race recovery
+ok 25 - Signature: verifies valid Razorpay Checkout HMAC signature
+ok 26 - Signature: rejects forged or mismatched Checkout signature
+ok 27 - Signature: verifies valid Razorpay webhook raw body signature
+ok 28 - Upsell: surfaces 5kg economy pack with unit-price savings within mandate limit
+ok 29 - Upsell: rejects candidate if total price exceeds remaining mandate cap
+ok 30 - Upsell: rejects candidate if total price exceeds user explicit prompt budget
+ok 31 - Upsell: rejects candidate if brand is denied in policy
+ok 32 - x402: returns 402 challenge with valid orderId and amount
+ok 33 - x402: issues short-lived token upon settlement and validates token
+1..33
+# tests 33, pass 33, fail 0
 ```
 
 ---
