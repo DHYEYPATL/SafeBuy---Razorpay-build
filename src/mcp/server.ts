@@ -5,6 +5,7 @@ import { planCart } from "../lib/safebuy/plan";
 import { runGuardrail } from "../lib/safebuy/guardrail";
 import { findBoundedUpsell } from "../lib/safebuy/upsell";
 import { generateX402Challenge, verifyAndIssueX402Token, validateX402Token, PREMIUM_CATALOG } from "../lib/safebuy/x402";
+import { verifyAgentSignature, lookupAgentIdentity, sanitizeOutboundPayload } from "../lib/safebuy/identity";
 import type { Mandate, ProposedCart } from "../lib/safebuy/types";
 
 // In-memory mandate store for MCP caller reference (or defaults to active policy)
@@ -168,7 +169,7 @@ export async function handleMcpToolCall(name: string, args: Record<string, any>)
       const noticeId = `not_mcp_${Date.now()}`;
       const executeAfter = new Date(Date.now() + 8000).toISOString();
 
-      return {
+      return sanitizeOutboundPayload({
         success: true,
         noticeId,
         executeAfter,
@@ -178,13 +179,15 @@ export async function handleMcpToolCall(name: string, args: Record<string, any>)
           totalRupees: cart.totalPaise / 100,
           merchant: cart.merchantName,
         },
-        boundedUpsell: upsell ? {
-          suggestedSku: upsell.suggestedSku,
-          suggestedName: upsell.suggestedName,
-          savingsPercent: upsell.savingsPercent,
-          explanation: upsell.explanation,
-        } : null,
-      };
+        boundedUpsell: upsell
+          ? {
+              suggestedSku: upsell.suggestedSku,
+              suggestedName: upsell.suggestedName,
+              savingsPercent: upsell.savingsPercent,
+              explanation: upsell.explanation,
+            }
+          : null,
+      });
     }
 
     case "confirm_purchase": {

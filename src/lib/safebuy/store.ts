@@ -8,6 +8,11 @@ import { planCart } from "./plan";
 import { fetchRazorpayPayment, parseIntentWithGrok } from "./razorpay-api";
 import { findBoundedUpsell, type UpsellCandidate } from "./upsell";
 import {
+  lookupAgentIdentity,
+  computeTrustScore,
+  type AgentIdentity,
+} from "./identity";
+import {
   AFA_EXEMPT_PAISE,
   DEMO_NOTIFY_WINDOW_MS,
   MERCHANT_ID,
@@ -32,6 +37,7 @@ type ChatMsg = { id: string; role: "user" | "agent" | "system"; text: string; ts
 
 interface SafeBuyState {
   mandate: Mandate | null;
+  agentIdentity: AgentIdentity;
   audit: AuditRecord[];
   attempts: PurchaseAttempt[];
   notices: PreDebitNotice[];
@@ -109,6 +115,15 @@ export const useSafeBuy = create<SafeBuyState>()(
   persist(
     (set, get) => ({
       mandate: null,
+      agentIdentity: lookupAgentIdentity("agent_safebuy_default") || {
+        agentId: "agent_safebuy_default",
+        publicKey: "pub_ed25519_demo_key_7788",
+        operatorName: "SafeBuy Reference Buyer",
+        actingFor: null,
+        registeredAt: new Date().toISOString(),
+        trustScore: 50,
+        status: "active",
+      },
       audit: [],
       attempts: [],
       notices: [],
@@ -146,21 +161,31 @@ export const useSafeBuy = create<SafeBuyState>()(
         const seq = (prev?.seq ?? 0) + 1;
         const id = newId("aud");
         const ts = nowIso();
-        const body = {
+        const base = {
           seq,
           id,
           ts,
           correlationId: partial.correlationId,
           phase: partial.phase,
           event: partial.event,
-          explain: partial.explain,
           layer: partial.layer,
-          payload: partial.payload,
+          explain: partial.explain,
+          payload: partial.payload ?? {},
         };
-        const hash = await hashRecord(prevHash, body);
-        const record: AuditRecord = { ...body, prevHash, hash };
-        set({ audit: [...get().audit, record], lastExplain: partial.explain });
-        return record;
+        const hash = await hashRecord(prevHash, base);
+        const rec: AuditRecord = { ...base, prevHash, hash };
+        const newAudit = [...get().audit, rec];
+        
+        // Recompute agent trust score dynamically from live audit trail
+        const currentAgent = get().agentIdentity;
+        const updatedScore = computeTrustScore(currentAgent.agentId, newAudit);
+
+        set({
+          audit: newAudit,
+          lastExplain: partial.explain,
+          agentIdentity: { ...currentAgent, trustScore: updatedScore },
+        });
+        return rec;
       },
 
       createMandate: async (input) => {

@@ -215,16 +215,11 @@ function Header() {
           </p>
         </div>
         <div>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-subtle">Machine Discovery</p>
-          <a
-            href="/.well-known/agent-catalog.json"
-            target="_blank"
-            rel="noreferrer"
-            className="mt-0.5 flex items-center gap-1 font-mono text-xs text-primary hover:underline"
-          >
-            <span>/.well-known/agent-catalog.json</span>
-            <ExternalLink className="size-3" />
-          </a>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-subtle">Agent Identity & Trust</p>
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <span className="font-mono text-xs text-primary font-medium">SafeBuy Buyer (92/100)</span>
+            <span className="rounded bg-emerald-500/20 px-1 py-0.2 text-[9px] font-semibold text-emerald-300">Active</span>
+          </div>
         </div>
       </div>
     </header>
