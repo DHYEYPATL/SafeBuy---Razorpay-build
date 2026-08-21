@@ -155,6 +155,7 @@ export function SafeBuyApp() {
 
 function Header() {
   const mandate = useSafeBuy((s) => s.mandate);
+  const agentIdentity = useSafeBuy((s) => s.agentIdentity);
   const phase = useSafeBuy((s) => s.phase);
   const isConfigured = useSafeBuy((s) => s.isConfigured);
   const audit = useSafeBuy((s) => s.audit);
@@ -217,8 +218,12 @@ function Header() {
         <div>
           <p className="text-[10px] font-medium uppercase tracking-wider text-subtle">Agent Identity & Trust</p>
           <div className="mt-0.5 flex items-center gap-1.5">
-            <span className="font-mono text-xs text-primary font-medium">SafeBuy Buyer (92/100)</span>
-            <span className="rounded bg-emerald-500/20 px-1 py-0.2 text-[9px] font-semibold text-emerald-300">Active</span>
+            <span className="font-mono text-xs text-primary font-medium">
+              {agentIdentity ? `${agentIdentity.operatorName} (${agentIdentity.trustScore}/100)` : "SafeBuy Buyer (50/100)"}
+            </span>
+            <span className="rounded bg-emerald-500/20 px-1 py-0.2 text-[9px] font-semibold text-emerald-300">
+              {agentIdentity?.status ?? "Active"}
+            </span>
           </div>
         </div>
       </div>

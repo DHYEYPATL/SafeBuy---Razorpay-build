@@ -83,7 +83,19 @@ Our Bounded Upsell engine is a pure deterministic function that evaluates same-b
 
 ### Q10: "How does SafeBuy address merchant monetization (Option A) beyond buyer protection?"
 **Answer:**  
-*"We implemented the emerging x402 HTTP monetization standard (`GET /api/catalog/premium` -> `402 Payment Required`). Agents querying priority wholesale inventory and bulk pricing pay a ₹2 micro-fee via a real Razorpay Order. Upon settlement (`POST /api/x402/settle`), our server issues a session-bound 15-minute access token. This gives merchants a direct revenue stream from AI agents."*
+*"We implemented the emerging x402 HTTP monetization pattern (`GET /api/catalog/premium` -> `402 Payment Required`). Agents querying priority wholesale inventory and bulk pricing pay a ₹2 micro-fee via a real Razorpay Order. Upon settlement (`POST /api/x402/settle`), our server issues a session-bound 15-minute access token. This gives merchants a direct revenue stream from AI agents."*
+
+---
+
+### Q11: "Is your Agent Identity layer connected to a live Visa TAP or NPCI UAP directory?"
+**Answer:**  
+*"No. This is an honest reference pattern implementation demonstrating the missing identity/reputation seam: agent registration, HMAC message signing with registered keys, 30s replay window with nonces, and dynamic trust scores derived from our hash-chained audit trail. It illustrates the architectural separation between agent identity and human mandate authorization without claiming live directory certification."*
+
+---
+
+### Q12: "Where is settlement proven in SafeBuy?"
+**Answer:**  
+*"Settlement is proven live against real Razorpay test keys via in-session backend polling (`GET /v1/payments/:id`) verifying `status === 'captured'` before `applyConfirm` debits the policy cap. Webhook HMAC SHA-256 verification is implemented as an offline module and verified via automated test suite."*
 
 ---
 
@@ -91,4 +103,4 @@ Our Bounded Upsell engine is a pure deterministic function that evaluates same-b
 1. **SafeBuy Web App** running on `localhost:8080`.
 2. **Razorpay Dashboard in Test Mode** showing real Orders and Payments.
 3. **Audit Tab** ready to click "Verify Audit Chain".
-4. **Terminal** ready to run `npm run test:unit` (29/29 tests passing).
+4. **Terminal** ready to run `npm run test:unit` (33/33 tests passing).

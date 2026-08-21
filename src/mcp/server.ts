@@ -129,6 +129,20 @@ export async function handleMcpToolCall(name: string, args: Record<string, any>)
     }
 
     case "propose_purchase": {
+      // 1. Optional Agent Signature / Identity Verification (TAP/UAP pattern)
+      if (args.agentId && args.signature) {
+        const sigCheck = verifyAgentSignature({
+          agentId: String(args.agentId),
+          payload: String(args.naturalLanguageIntent),
+          signature: String(args.signature),
+          timestamp: Number(args.timestamp || Date.now()),
+          nonce: String(args.nonce || "mcp_nonce_default"),
+        });
+        if (!sigCheck.ok) {
+          return { error: "SignatureVerificationFailed", message: sigCheck.reason };
+        }
+      }
+
       const mandate = activeMandates.get(args.mandateId);
       if (!mandate) {
         return {

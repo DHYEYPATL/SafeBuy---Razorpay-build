@@ -48,14 +48,15 @@ SafeBuy maintains a strict, transparent boundary between real production logic a
 | **Deterministic Guardrail** | **LIVE** | Validates cart items against policy schema **and** instruction pack tokens (`packTokens`, `excludeTokens`), catching real agentic substitution errors (e.g. atta for basmati). |
 | **Deterministic Bounded Upsell** | **LIVE** | Surfaces unit-price optimization suggestions (e.g. 5kg pack saving 12%/kg) strictly bounded by remaining mandate limits and brand constraints. |
 | **Machine-Readable Discovery** | **LIVE** | `/.well-known/agent-catalog.json` AP2/ACP-compliant public discovery manifest exposing structured SKU metadata and `packTokens` for external AI buyers. |
-| **Model Context Protocol (MCP)** | **LIVE** | Standard JSON-RPC stdio MCP server (`src/mcp/server.ts`) exporting 6 core tools for external AI agents (Claude Desktop, etc.). |
-| **x402-Pattern Monetization** | **LIVE** | HTTP 402 challenge/settlement (`/api/catalog/premium`) gating wholesale & priority stock behind ₹2 micro-fee paid via Razorpay Orders. |
+| **Model Context Protocol (MCP)** | **LIVE** | Standard JSON-RPC stdio MCP server (`src/mcp/server.ts`) exporting 6 core tools for external AI agents (Claude Desktop, etc.) with outbound budget redaction. |
+| **Agent Identity & Trust (TAP/UAP Pattern)** | **LIVE (Pattern)** | Scoped reference pattern: in-memory agent registration, HMAC message signing, 30s replay defense, and audit-derived dynamic trust score. *Not live Visa TAP or NPCI UAP directory.* |
+| **x402-Pattern Monetization** | **LIVE (Pattern)** | HTTP 402 challenge/settlement module (`src/lib/safebuy/x402.ts`) gating wholesale & priority stock behind ₹2 micro-fee paid via Razorpay Orders. |
 | **Merchant Order & Stock Reservation** | **LIVE** | Creates durable `MerchantOrder` reserving catalog inventory before the notice window; settles to `paid` or releases on abort. |
 | **Pre-Debit Notice Record** | **LIVE** | Creates a durable `PreDebitNotice` record with timestamp thresholds (`executeAfter`), dwell countdown, and hold/extend controls. |
 | **Razorpay Orders API** | **LIVE** | Real `POST /v1/orders` created before debit with receipt ID, correlation IDs, and attempt metadata. Checkout requires `order_id`. |
-| **In-Session Reconciliation Loop** | **LIVE** | Backend polling of `GET /v1/payments/:id`. Mandate decrements only when `status === "captured"`. |
-| **HMAC Signature Verification** | **LIVE** | Server-side cryptographic verification of Checkout `order_id|payment_id` and Webhook payloads. |
-| **Webhook Subsystem** | **LIVE** | HMAC SHA-256 validation module and payload parser implemented in `src/lib/safebuy/razorpay-webhook.ts` and verified via automated unit test suite. |
+| **In-Session Reconciliation (Primary Rail)**| **LIVE** | Direct backend status polling (`GET /v1/payments/:id`). Settlement executes only when `status === "captured"`. |
+| **HMAC Signature Verification** | **LIVE** | Server-side cryptographic verification of Checkout `order_id|payment_id` signatures. |
+| **Webhook Validation Module** | **LIVE (Module)** | Offline timing-safe raw body HMAC SHA-256 validation module and parser (`src/lib/safebuy/razorpay-webhook.ts`) verified via automated unit test suite. |
 | **Hash-Chained Audit Trail** | **LIVE** | Sequential SHA-256 hash chaining with canonical JSON and interactive UI verification. |
 | **Merchant Catalog (Nila Kirana)** | **SYNTHETIC** | Stand-in grocery merchant catalog providing realistic agent-readable SKUs. |
 | **Bank Pre-debit SMS** | **SYNTHETIC** | Simulated in-app notice standing in for RBI 24h SMS notice. |
