@@ -1,18 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { coerceIntent, parseIntentDeterministic } from "./parse-intent";
 
-const PUBLIC_TEST_KEY = "rzp_test_1DP5mmOlF5G5ag";
-
 export const getRazorpayPublicKey = createServerFn({ method: "GET" }).handler(
   async () => {
-    const key =
-      process.env.RAZORPAY_KEY_ID ||
-      process.env.VITE_RAZORPAY_KEY_ID ||
-      PUBLIC_TEST_KEY;
+    const key = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || "";
+    const hasSecret = Boolean(process.env.RAZORPAY_KEY_SECRET);
     return {
       keyId: key,
       mode: key.startsWith("rzp_test") ? ("test" as const) : ("live" as const),
-      hasSecret: Boolean(process.env.RAZORPAY_KEY_SECRET),
+      hasSecret,
+      configured: Boolean(key && hasSecret),
     };
   },
 );
@@ -20,20 +17,12 @@ export const getRazorpayPublicKey = createServerFn({ method: "GET" }).handler(
 export const createRazorpayOrder = createServerFn({ method: "POST" })
   .validator((input: { amountPaise: number; receipt: string; notes: Record<string, string> }) => input)
   .handler(async ({ data }) => {
-    const keyId =
-      process.env.RAZORPAY_KEY_ID ||
-      process.env.VITE_RAZORPAY_KEY_ID ||
-      PUBLIC_TEST_KEY;
+    const keyId = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID;
     const secret = process.env.RAZORPAY_KEY_SECRET;
-    if (!secret) {
+    if (!keyId || !secret) {
       return {
-        ok: true as const,
-        usedOrdersApi: false,
-        keyId,
-        orderId: null as string | null,
-        amount: data.amountPaise,
-        currency: "INR",
-        note: "No RAZORPAY_KEY_SECRET in this environment. Checkout still opens on Razorpay test-mode with key_id (real Checkout.js). Orders API is skipped.",
+        ok: false as const,
+        error: "Razorpay test credentials missing. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your environment.",
       };
     }
 
@@ -43,6 +32,7 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
       headers: {
         Authorization: `Basic ${auth}`,
         "Content-Type": "application/json",
+        "Idempotency-Key": data.receipt.slice(0, 40),
       },
       body: JSON.stringify({
         amount: data.amountPaise,
@@ -74,13 +64,13 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
 export const fetchRazorpayPayment = createServerFn({ method: "POST" })
   .validator((input: { paymentId: string }) => input)
   .handler(async ({ data }) => {
-    const keyId = process.env.RAZORPAY_KEY_ID || PUBLIC_TEST_KEY;
+    const keyId = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID;
     const secret = process.env.RAZORPAY_KEY_SECRET;
-    if (!secret) {
+    if (!keyId || !secret) {
       return {
-        ok: true as const,
+        ok: false as const,
         status: "unknown" as const,
-        note: "No secret — cannot fetch payment. Client handler is source of truth in this demo.",
+        error: "No Razorpay test credentials configured to fetch payment status.",
       };
     }
     const auth = Buffer.from(`${keyId}:${secret}`).toString("base64");
@@ -88,10 +78,10 @@ export const fetchRazorpayPayment = createServerFn({ method: "POST" })
       headers: { Authorization: `Basic ${auth}` },
     });
     if (!res.ok) {
-      return { ok: false as const, error: `Fetch payment ${res.status}` };
+      return { ok: false as const, status: "unknown" as const, error: `Fetch payment ${res.status}` };
     }
-    const body = (await res.json()) as { status: string; id: string };
-    return { ok: true as const, status: body.status, note: "Fetched from Razorpay." };
+    const body = (await res.json()) as { status: string; id: string; amount: number; order_id: string };
+    return { ok: true as const, status: body.status, payment: body, note: "Fetched from Razorpay." };
   });
 
 export const parseIntentWithGrok = createServerFn({ method: "POST" })
@@ -147,3 +137,14 @@ export const parseIntentWithGrok = createServerFn({ method: "POST" })
       return { ok: true as const, source: "deterministic" as const, intent: fallback };
     }
   });
+
+export const processRazorpayWebhookEvent = createServerFn({ method: "POST" })
+  .validator((input: { rawBody: string; signature: string | null }) => input)
+  .handler(async ({ data }) => {
+    const { handleRazorpayWebhookPayload } = await import("./razorpay-webhook");
+    return handleRazorpayWebhookPayload({
+      rawBody: data.rawBody,
+      signature: data.signature,
+    });
+  });
+

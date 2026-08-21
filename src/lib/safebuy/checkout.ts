@@ -35,13 +35,16 @@ export function loadRazorpayScript() {
 export async function openRazorpayCheckout(opts: {
   key: string;
   amountPaise: number;
-  orderId?: string | null;
+  orderId: string;
   name: string;
   description: string;
   notes: Record<string, string>;
   onSuccess: (p: RazorpaySuccess) => void;
   onDismiss: () => void;
 }) {
+  if (!opts.orderId) {
+    throw new Error("Razorpay Order ID is required. Bounded AI buyer will not execute payments without a pre-created Order.");
+  }
   await loadRazorpayScript();
   if (!window.Razorpay) throw new Error("Razorpay Checkout is not available");
   const rzp = new window.Razorpay({
@@ -50,7 +53,7 @@ export async function openRazorpayCheckout(opts: {
     currency: "INR",
     name: opts.name,
     description: opts.description,
-    order_id: opts.orderId || undefined,
+    order_id: opts.orderId,
     notes: opts.notes,
     theme: { color: "#1a1c18" },
     modal: { ondismiss: opts.onDismiss },
