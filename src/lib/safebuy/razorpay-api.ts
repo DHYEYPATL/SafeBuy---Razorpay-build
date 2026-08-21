@@ -134,7 +134,7 @@ export const parseIntentWithGrok = createServerFn({ method: "POST" })
             {
               role: "system",
               content:
-                "Extract a grocery purchase intent as JSON only. Fields: maxAmountPaise (number|null, rupees*100), categories (subset of grains,pulses,spices,oil,dairy,snacks,beverages,household), brandsAllow string[], brandsDeny string[], maxQuantityPerItem number|null, priceCeilingPerItemPaise number|null. No markdown.",
+                "Extract a grocery purchase intent as JSON only. Fields: maxAmountPaise (number|null, rupees*100), categories (subset of grains,pulses,spices,oil,dairy,snacks,beverages,household), brandsAllow string[], brandsDeny string[], maxQuantityPerItem number|null, priceCeilingPerItemPaise number|null, packTokens string[] (search terms e.g. ['basmati']), excludeTokens string[], qty number|null, packSizeHint string|null (e.g. '1kg', '5kg'). No markdown.",
             },
             { role: "user", content: data.text },
           ],

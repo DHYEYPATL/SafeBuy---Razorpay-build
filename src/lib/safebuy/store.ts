@@ -82,6 +82,7 @@ interface SafeBuyState {
     status?: string;
     source: "fetch" | "webhook";
   }) => Promise<void>;
+  releaseReservation: (attemptId: string | null, reason: string) => Promise<void>;
   failClosed: (reason: string) => Promise<void>;
   abortPending: (reason: string) => Promise<void>;
   resetDemo: () => void;
@@ -316,7 +317,7 @@ export const useSafeBuy = create<SafeBuyState>()(
           return;
         }
 
-        // P1-2: Stock Race recovery
+        // Stock Race recovery
         if (get().labInject === "stock_race") {
           const firstSku = cart.lines[0]?.sku;
           if (firstSku) {
@@ -606,6 +607,12 @@ export const useSafeBuy = create<SafeBuyState>()(
       },
 
       proceedNow: async () => {
+        const st = get();
+        const notice = st.notices.find((n) => n.attemptId === st.pendingAttemptId);
+        if (!notice || notice.status !== "issued") {
+          await st.failClosed("Proceed rejected: Valid pre-debit notice not found.");
+          return;
+        }
         set({ windowMsLeft: 0 });
         await get().startExecute();
       },
@@ -659,6 +666,13 @@ export const useSafeBuy = create<SafeBuyState>()(
         const mandate = st.mandate;
         const cart = st.pendingCart;
         if (!attempt || !cart) return;
+
+        // Data gate: verify notice exists and is issued
+        const notice = st.notices.find((n) => n.attemptId === attempt.id);
+        if (notice && notice.status !== "issued") {
+          await st.failClosed("Execution blocked: Pre-debit notice was cancelled or expired.");
+          return;
+        }
 
         set({ isExecutingLocked: true });
 
@@ -745,25 +759,32 @@ export const useSafeBuy = create<SafeBuyState>()(
           const isSoftDeclineLab = st.labInject === "soft_decline";
 
           if (isSoftDeclineLab) {
-            await st.appendAudit({
-              correlationId: st.correlationId ?? "",
-              phase: "pending",
-              event: "payment.soft_decline",
-              layer: "live",
-              explain: "Status verified with Razorpay: Payment status is 'failed'. Enforcing single retry policy.",
-              payload: { paymentId, pollAttempt: i + 1, retryCount: 0 },
-            });
-
             const attempt = st.attempts.find((a) => a.id === attemptId);
             if (attempt && attempt.attemptsCharge === 0) {
+              await st.appendAudit({
+                correlationId: st.correlationId ?? "",
+                phase: "pending",
+                event: "payment.soft_decline",
+                layer: "live",
+                explain: "Status verified with Razorpay: Payment failed with soft decline. Triggering single retry on rail.",
+                payload: { paymentId, pollAttempt: i + 1, retryCount: 0 },
+              });
+
+              // Soft decline retry: bump attemptsCharge, create new Order, and re-execute
               set({
                 attempts: st.attempts.map((a) =>
                   a.id === attemptId
                     ? { ...a, attemptsCharge: 1, razorpayStatus: "failed", failure: "soft_decline" }
                     : a,
                 ),
+                isExecutingLocked: false,
               });
-              await st.failClosed("Payment returned soft decline. Verified failed status. Single retry exhausted.");
+
+              await st.startExecute();
+              return;
+            } else if (attempt && attempt.attemptsCharge >= 1) {
+              await st.releaseReservation(attemptId, "Soft decline retry exhausted (1 retry limit). Halting safely.");
+              await st.failClosed("Payment soft decline: single retry exhausted. Mandate unchanged.");
               return;
             }
           }
@@ -780,6 +801,28 @@ export const useSafeBuy = create<SafeBuyState>()(
               });
               return;
             } else if (res.ok && (res.status === "failed" || res.status === "cancelled" || res.status === "refunded")) {
+              const attempt = st.attempts.find((a) => a.id === attemptId);
+              if (attempt && attempt.attemptsCharge === 0) {
+                // Real soft decline on failure card: retry once
+                await st.appendAudit({
+                  correlationId: st.correlationId ?? "",
+                  phase: "pending",
+                  event: "payment.soft_decline",
+                  layer: "live",
+                  explain: `Payment ${paymentId} reported status '${res.status}'. Initiating single retry attempt.`,
+                  payload: { paymentId, status: res.status, retryCount: 0 },
+                });
+                set({
+                  attempts: st.attempts.map((a) =>
+                    a.id === attemptId ? { ...a, attemptsCharge: 1, razorpayStatus: "failed" } : a,
+                  ),
+                  isExecutingLocked: false,
+                });
+                await st.startExecute();
+                return;
+              }
+
+              await st.releaseReservation(attemptId, `Payment ended in status '${res.status}'. Debit failed.`);
               await st.failClosed(`Payment ended in status '${res.status}'. Debit failed.`);
               return;
             }
@@ -790,6 +833,7 @@ export const useSafeBuy = create<SafeBuyState>()(
 
         const finalSt = get();
         if (!finalSt.confirmedPaymentIds.includes(paymentId)) {
+          await finalSt.releaseReservation(attemptId, "Payment status check timed out (fail-closed).");
           await finalSt.failClosed("Payment status check timed out (fail-closed). Any late webhook capture will reconcile safely.");
         }
       },
@@ -835,11 +879,17 @@ export const useSafeBuy = create<SafeBuyState>()(
           newStockOverride[line.sku] = Math.max(0, currentStock - line.quantity);
         }
 
-        // Update MerchantOrder to 'paid'
+        // Update MerchantOrder to 'paid' and Notice to 'executed'
         const updatedMerchantOrders = st.merchantOrders.map((mo) =>
           mo.attemptId === (attempt?.id ?? st.pendingAttemptId)
             ? { ...mo, status: "paid" as const, paidAt: nowIso(), razorpayOrderId: orderId ?? mo.razorpayOrderId }
             : mo,
+        );
+
+        const updatedNotices = st.notices.map((n) =>
+          n.attemptId === (attempt?.id ?? st.pendingAttemptId)
+            ? { ...n, status: "executed" as const }
+            : n,
         );
 
         const isLateReconcile = attempt?.phase === "failed";
@@ -848,6 +898,7 @@ export const useSafeBuy = create<SafeBuyState>()(
           phase: "confirmed",
           stockOverride: newStockOverride,
           merchantOrders: updatedMerchantOrders,
+          notices: updatedNotices,
           confirmedPaymentIds: [...st.confirmedPaymentIds, paymentId],
           isExecutingLocked: false,
           attempts: st.attempts.map((a) =>
@@ -886,14 +937,43 @@ export const useSafeBuy = create<SafeBuyState>()(
         });
       },
 
+      releaseReservation: async (attemptId, reason) => {
+        const targetId = attemptId ?? get().pendingAttemptId;
+        if (!targetId) return;
+
+        // Release reserved merchant order and cancel pre-debit notice
+        const updatedMerchantOrders = get().merchantOrders.map((mo) =>
+          mo.attemptId === targetId && mo.status === "reserved"
+            ? { ...mo, status: "released" as const }
+            : mo,
+        );
+
+        const updatedNotices = get().notices.map((n) =>
+          n.attemptId === targetId && n.status === "issued"
+            ? { ...n, status: "cancelled" as const }
+            : n,
+        );
+
+        set({
+          merchantOrders: updatedMerchantOrders,
+          notices: updatedNotices,
+        });
+
+        await get().appendAudit({
+          correlationId: get().correlationId ?? newId("cor"),
+          phase: get().phase,
+          event: "merchant.reservation_released",
+          layer: "live",
+          explain: `Merchant order reservation released for attempt ${targetId}: ${reason}`,
+          payload: { attemptId: targetId, reason },
+        });
+      },
+
       failClosed: async (reason) => {
         const cid = get().correlationId ?? newId("cor");
         const attemptId = get().pendingAttemptId;
 
-        // Release reserved merchant orders
-        const updatedMerchantOrders = get().merchantOrders.map((mo) =>
-          mo.attemptId === attemptId ? { ...mo, status: "released" as const } : mo,
-        );
+        await get().releaseReservation(attemptId, reason);
 
         await get().appendAudit({
           correlationId: cid,
@@ -907,7 +987,6 @@ export const useSafeBuy = create<SafeBuyState>()(
         set({
           phase: "failed",
           isExecutingLocked: false,
-          merchantOrders: updatedMerchantOrders,
           chat: [
             ...get().chat,
             {
@@ -924,10 +1003,7 @@ export const useSafeBuy = create<SafeBuyState>()(
         const cid = get().correlationId ?? newId("cor");
         const attemptId = get().pendingAttemptId;
 
-        // Release reserved merchant orders
-        const updatedMerchantOrders = get().merchantOrders.map((mo) =>
-          mo.attemptId === attemptId ? { ...mo, status: "released" as const } : mo,
-        );
+        await get().releaseReservation(attemptId, reason);
 
         await get().appendAudit({
           correlationId: cid,
@@ -944,7 +1020,6 @@ export const useSafeBuy = create<SafeBuyState>()(
           pendingCart: null,
           pendingAttemptId: null,
           isExecutingLocked: false,
-          merchantOrders: updatedMerchantOrders,
         });
       },
 
