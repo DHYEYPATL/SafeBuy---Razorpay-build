@@ -48,6 +48,8 @@ SafeBuy maintains a strict, transparent boundary between real production logic a
 | **Deterministic Guardrail** | **LIVE** | Validates cart items against policy schema **and** instruction pack tokens (`packTokens`, `excludeTokens`), catching real agentic substitution errors (e.g. atta for basmati). |
 | **Deterministic Bounded Upsell** | **LIVE** | Surfaces unit-price optimization suggestions (e.g. 5kg pack saving 12%/kg) strictly bounded by remaining mandate limits and brand constraints. |
 | **Machine-Readable Discovery** | **LIVE** | `/.well-known/agent-catalog.json` AP2/ACP-compliant public discovery manifest exposing structured SKU metadata and `packTokens` for external AI buyers. |
+| **Model Context Protocol (MCP)** | **LIVE** | Standard JSON-RPC stdio MCP server (`src/mcp/server.ts`) exporting 6 core tools for external AI agents (Claude Desktop, etc.). |
+| **x402-Pattern Monetization** | **LIVE** | HTTP 402 challenge/settlement (`/api/catalog/premium`) gating wholesale & priority stock behind ₹2 micro-fee paid via Razorpay Orders. |
 | **Merchant Order & Stock Reservation** | **LIVE** | Creates durable `MerchantOrder` reserving catalog inventory before the notice window; settles to `paid` or releases on abort. |
 | **Pre-Debit Notice Record** | **LIVE** | Creates a durable `PreDebitNotice` record with timestamp thresholds (`executeAfter`), dwell countdown, and hold/extend controls. |
 | **Razorpay Orders API** | **LIVE** | Real `POST /v1/orders` created before debit with receipt ID, correlation IDs, and attempt metadata. Checkout requires `order_id`. |
