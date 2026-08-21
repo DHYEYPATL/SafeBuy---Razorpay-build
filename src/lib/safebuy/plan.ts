@@ -1,5 +1,13 @@
 import { CATALOG, getItem } from "./catalog";
-import { MERCHANT_ID, MERCHANT_NAME, type CartLine, type CatalogItem, type Mandate, type ProposedCart, type StructuredIntent } from "./types";
+import {
+  MERCHANT_ID,
+  MERCHANT_NAME,
+  type CartLine,
+  type CatalogItem,
+  type Mandate,
+  type ProposedCart,
+  type StructuredIntent,
+} from "./types";
 
 function matches(
   item: CatalogItem,
@@ -21,17 +29,25 @@ function matches(
   if (intent.priceCeilingPerItemPaise && item.pricePaise > intent.priceCeilingPerItemPaise) {
     return false;
   }
-  const q = intent.queryText.toLowerCase();
-  if (q) {
-    const blob = `${item.name} ${item.brand} ${item.category} ${item.sku}`.toLowerCase();
-    const tokens = q
-      .split(/[^a-z0-9]+/)
-      .filter((w) => w.length > 2 && !["under", "please", "buy", "need", "some", "the"].includes(w));
-    if (tokens.length && !tokens.some((w) => blob.includes(w))) {
-      // still allow category-only matches
-      if (!intent.categories.includes(item.category)) return false;
+
+  const blob = `${item.name} ${item.brand} ${item.category} ${item.sku} ${item.unit}`.toLowerCase();
+
+  // Exclude tokens
+  if (intent.excludeTokens && intent.excludeTokens.some((ex) => blob.includes(ex))) {
+    return false;
+  }
+
+  // Pack tokens matching
+  if (intent.packTokens && intent.packTokens.length > 0) {
+    const nonCategoryTokens = intent.packTokens.filter(
+      (tok) => !(intent.categories as readonly string[]).includes(tok),
+    );
+    if (nonCategoryTokens.length > 0) {
+      const hasMatch = nonCategoryTokens.some((tok) => blob.includes(tok));
+      if (!hasMatch) return false;
     }
   }
+
   return true;
 }
 
@@ -66,9 +82,20 @@ export function planCart(
     };
   }
 
-  const qty = Math.min(intent.maxQuantityPerItem ?? 1, mandate.maxQuantityPerItem);
+  const qty = Math.min(intent.qty ?? intent.maxQuantityPerItem ?? 1, mandate.maxQuantityPerItem);
+
+  // Score candidates: give priority to exact unit/packSize matches (e.g. 1kg vs 5kg)
   const candidates = CATALOG.filter((i) => matches(i, mandate, intent, excludeSkus, stockOverride)).sort(
-    (a, b) => a.pricePaise - b.pricePaise,
+    (a, b) => {
+      let scoreA = 0;
+      let scoreB = 0;
+      if (intent.packSizeHint) {
+        if (a.unit.toLowerCase().replace(/\s/g, "").includes(intent.packSizeHint)) scoreA += 100;
+        if (b.unit.toLowerCase().replace(/\s/g, "").includes(intent.packSizeHint)) scoreB += 100;
+      }
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      return a.pricePaise - b.pricePaise;
+    },
   );
 
   const budget = Math.min(
@@ -76,10 +103,31 @@ export function planCart(
     intent.maxAmountPaise ?? mandate.remainingPaise,
   );
 
+  // Ask-back clarification check: If no candidates match due to budget
+  if (candidates.length === 0) {
+    const allCategoryMatches = CATALOG.filter(
+      (i) => intent.categories.includes(i.category) && (itemStock(i, stockOverride) > 0),
+    );
+    if (allCategoryMatches.length > 0 && intent.maxAmountPaise) {
+      const minPrice = Math.min(...allCategoryMatches.map((i) => i.pricePaise));
+      if (minPrice > intent.maxAmountPaise) {
+        return {
+          lines: [],
+          totalPaise: 0,
+          merchantId: MERCHANT_ID,
+          merchantName: MERCHANT_NAME,
+          reason: `No in-stock item matched within budget of ₹${intent.maxAmountPaise / 100}. The lowest price for ${intent.categories.join(", ")} is ₹${minPrice / 100}.`,
+          needsClarification: true,
+          clarificationPrompt: `The lowest available price in ${intent.categories.join(", ")} is ₹${minPrice / 100} (${allCategoryMatches[0]?.name}). Would you like to increase your budget?`,
+        };
+      }
+    }
+  }
+
   const lines: CartLine[] = [];
   let total = 0;
   for (const item of candidates) {
-    const liveItemStock = item.sku in stockOverride ? stockOverride[item.sku]! : item.stock;
+    const liveItemStock = itemStock(item, stockOverride);
     const q = Math.min(qty, liveItemStock);
     if (q <= 0) continue;
     const line = toLine(item, q);
@@ -97,7 +145,11 @@ export function planCart(
     merchantId: MERCHANT_ID,
     merchantName: MERCHANT_NAME,
     reason: lines.length
-      ? `Cheapest in-mandate match for “${intent.queryText}”: ${names}.`
+      ? `Best in-mandate match for “${intent.queryText}”: ${names}.`
       : `No in-stock SKU matched both the mandate and the instruction.`,
   };
+}
+
+function itemStock(item: CatalogItem, stockOverride: Record<string, number>) {
+  return item.sku in stockOverride ? stockOverride[item.sku]! : item.stock;
 }

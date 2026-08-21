@@ -13,7 +13,18 @@ export function runGuardrail(opts: {
       ok: false,
       code: "mandate_revoked",
       title: "Mandate is not active",
-      detail: "This mandate was revoked. Future debits are blocked.",
+      detail: "This mandate was revoked or has expired. Future debits are blocked.",
+      needsHumanConfirm: false,
+    };
+  }
+
+  // Check mandate validity period
+  if (mandate.validUntil && new Date(mandate.validUntil).getTime() < Date.now()) {
+    return {
+      ok: false,
+      code: "mandate_expired",
+      title: "Mandate expired",
+      detail: `This policy expired on ${new Date(mandate.validUntil).toLocaleDateString()}. Re-authorization required.`,
       needsHumanConfirm: false,
     };
   }
@@ -33,9 +44,46 @@ export function runGuardrail(opts: {
       ok: false,
       code: "afa_threshold",
       title: "Above ₹15,000 AFA-exempt threshold",
-      detail: "RBI silent-debit exemption does not apply. Human confirmation is required before execution.",
+      detail: "RBI silent-debit exemption does not apply above ₹15,000. Human confirmation is mandatory before execution.",
       needsHumanConfirm: true,
     };
+  }
+
+  // Combined text representation of all cart items
+  const cartBlob = lines
+    .map((l) => `${l.name} ${l.brand} ${l.category} ${l.sku}`.toLowerCase())
+    .join(" ");
+
+  // 1. Pack Token Verification: Ensure every requested specific keyword appears in the cart
+  if (intent.packTokens && intent.packTokens.length > 0) {
+    for (const token of intent.packTokens) {
+      // If token is not a category name and not in cart blob -> block semantic mismatch
+      const isCategoryWord = (intent.categories as readonly string[]).includes(token);
+      if (!isCategoryWord && !cartBlob.includes(token)) {
+        return {
+          ok: false,
+          code: "semantic_mismatch",
+          title: "Requested item not in cart",
+          detail: `You asked for '${token}', but the planned cart contains '${lines.map((l) => l.name).join(", ")}' without matching '${token}'.`,
+          needsHumanConfirm: true,
+        };
+      }
+    }
+  }
+
+  // 2. Exclude Token Verification: Ensure no denied keyword appears in the cart
+  if (intent.excludeTokens && intent.excludeTokens.length > 0) {
+    for (const exToken of intent.excludeTokens) {
+      if (cartBlob.includes(exToken)) {
+        return {
+          ok: false,
+          code: "semantic_mismatch",
+          title: "Excluded item found in cart",
+          detail: `Instruction excluded '${exToken}', but cart contains items matching '${exToken}'.`,
+          needsHumanConfirm: true,
+        };
+      }
+    }
   }
 
   for (const line of lines) {
@@ -44,7 +92,7 @@ export function runGuardrail(opts: {
         ok: false,
         code: "semantic_mismatch",
         title: "Category not on the mandate",
-        detail: `${line.name} is ${line.category}, which the mandate does not allow.`,
+        detail: `${line.name} is in category '${line.category}', which the mandate does not permit.`,
         needsHumanConfirm: false,
       };
     }
@@ -80,7 +128,7 @@ export function runGuardrail(opts: {
         ok: false,
         code: "semantic_mismatch",
         title: "Item over price ceiling",
-        detail: `${line.name} is above the per-item ceiling.`,
+        detail: `${line.name} exceeds the per-item ceiling of ₹${mandate.priceCeilingPerItemPaise / 100}.`,
         needsHumanConfirm: false,
       };
     }
@@ -99,7 +147,7 @@ export function runGuardrail(opts: {
         ok: false,
         code: "semantic_mismatch",
         title: "Intent denied this brand",
-        detail: `Instruction excludes ${line.brand}.`,
+        detail: `Instruction excludes brand '${line.brand}'.`,
         needsHumanConfirm: true,
       };
     }
@@ -116,8 +164,8 @@ export function runGuardrail(opts: {
       return {
         ok: false,
         code: "semantic_mismatch",
-        title: "Quantity beyond this instruction",
-        detail: `Asked for at most ${intent.maxQuantityPerItem}.`,
+        title: "Quantity beyond instruction",
+        detail: `Asked for at most ${intent.maxQuantityPerItem} units.`,
         needsHumanConfirm: true,
       };
     }
@@ -128,7 +176,7 @@ export function runGuardrail(opts: {
       return {
         ok: false,
         code: "semantic_mismatch",
-        title: "Price beyond this instruction",
+        title: "Price beyond instruction cap",
         detail: `${line.name} exceeds the instruction's per-item cap.`,
         needsHumanConfirm: true,
       };
@@ -140,7 +188,7 @@ export function runGuardrail(opts: {
       ok: false,
       code: "semantic_mismatch",
       title: "Cart over instruction budget",
-      detail: `Instruction budget ₹${(intent.maxAmountPaise / 100).toFixed(0)} but cart is ₹${(totalPaise / 100).toFixed(0)}.`,
+      detail: `Instruction budget ₹${(intent.maxAmountPaise / 100).toFixed(0)} but cart total is ₹${(totalPaise / 100).toFixed(0)}.`,
       needsHumanConfirm: true,
     };
   }
@@ -149,7 +197,7 @@ export function runGuardrail(opts: {
     ok: true,
     code: "pass",
     title: "Guardrail passed",
-    detail: "Cart sits inside both the mandate and the structured intent.",
+    detail: "Cart is strictly within the structured mandate, pack tokens, and budget parameters.",
     needsHumanConfirm: false,
   };
 }
