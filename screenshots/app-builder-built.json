@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "SafeBuy",
+      "hasCanvas": false,
+      "bodyTextLen": 685,
+      "bodyTextHash": "d00151272b8b40771d40b51c0017eea091d2017e942a2c1b5a690e814e6140e3",
+      "bodyTextPrefix": "TRACK 01 · AGENTIC COMMERCE SafeBuy A bounded AI buyer. Unique s",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "SafeBuy",
+      "hasCanvas": false,
+      "bodyTextLen": 685,
+      "bodyTextHash": "f6196b6bcceebac1827458b0e52f4d6f7325b662336e9bde062496fcd6300cba",
+      "bodyTextPrefix": "TRACK 01 · AGENTIC COMMERCE SafeBuy A bounded AI buyer. Unique s",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}

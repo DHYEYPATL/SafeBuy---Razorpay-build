@@ -1,0 +1,524 @@
+This is the **local build spec**. Treat existing mandate / guardrail / notify / hash-audit as **frozen USP**. You are completing the **money + recovery spine** around them.
+
+Canonical files you will keep touching:
+
+- [`src/lib/safebuy/store.ts`](src/lib/safebuy/store.ts) — orchestrator
+- [`src/lib/safebuy/razorpay-api.ts`](src/lib/safebuy/razorpay-api.ts) — Razorpay server fns
+- [`src/lib/safebuy/checkout.ts`](src/lib/safebuy/checkout.ts) — Checkout.js
+- [`src/lib/safebuy/types.ts`](src/lib/safebuy/types.ts) — add `pending` usage, attempt fields
+- [`src/components/safebuy/safe-buy-app.tsx`](src/components/safebuy/safe-buy-app.tsx) — `openLiveCheckout()`
+
+---
+
+## 0. Target payment state machine (build this first in your head)
+
+Today `confirmPayment` jumps `execute → confirmed` from the **browser handler**. That is the root bug.
+
+```text
+window ──► execute
+              │
+              ▼
+     create Order (Razorpay)     [MUST succeed or fail-closed]
+              │
+              ▼
+     open Checkout WITH order_id  OR  token charge
+              │
+              ▼
+           pending                 [handler only means "user finished UI"]
+              │
+      ┌───────┴────────┐
+      ▼                ▼
+   webhook          poll Fetch
+ payment.captured   GET /payments/:id
+      │                │
+      └───────┬────────┘
+              ▼
+     verify signature
+     idempotent apply
+              ▼
+          confirmed                [ONLY here: remainingPaise -=, stock -=]
+```
+
+Add on `PurchaseAttempt`:
+
+```ts
+razorpaySignature: string | null
+razorpayStatus: "none" | "created" | "pending" | "captured" | "failed" | "unknown"
+confirmSource: "none" | "handler_unverified" | "fetch" | "webhook"
+attemptsCharge: number          // retry count
+```
+
+Never decrement mandate in the Checkout `handler`. Handler only stores ids and sets `pending`.
+
+---
+
+# P0 — submission-blocking
+
+## P0-1. Your own Razorpay test keys (kill the sample key)
+
+**Why.** `rzp_test_1DP5mmOlF5G5ag` is a public sample. Orders **require** secret. Judges will ask “is this *your* test mode?”
+
+**Now.** [`razorpay-api.ts`](src/lib/safebuy/razorpay-api.ts) lines 4–37: if no `RAZORPAY_KEY_SECRET`, it returns `usedOrdersApi: false` and still opens Checkout.
+
+**Pipeline**
+
+1. Razorpay Dashboard → **Test mode** → API Keys → Key Id + Key Secret.  
+2. Webhooks → add endpoint later (P0-4) → copy **Webhook secret**.  
+3. Local env (never commit):
+
+```
+RAZORPAY_KEY_ID=rzp_test_xxxxxxxx
+RAZORPAY_KEY_SECRET=xxxxxxxx
+RAZORPAY_WEBHOOK_SECRET=xxxxxxxx
+```
+
+4. Change `getRazorpayPublicKey` / `createRazorpayOrder`:
+   - If `!KEY_ID || !SECRET` → `{ ok: false, error: "Razorpay test credentials missing" }`.
+   - Delete `PUBLIC_TEST_KEY` constant.
+5. UI: if `ok: false` on boot, show a blocking banner: “Set test keys — money path offline.” Do not silently Checkout.
+
+**Done when.** Creating an order in *your* dashboard matches `order_id` in the audit payload.
+
+---
+
+## P0-2. Orders API is the only live execute path
+
+**Why.** Track: *using Razorpay test-mode APIs*. An order is the durable object webhooks attach to.
+
+**Now.** `openLiveCheckout()` calls `createRazorpayOrder`; without secret `orderId` is `null` and Checkout runs on amount only ([`checkout.ts`](src/lib/safebuy/checkout.ts) `order_id: opts.orderId || undefined`).
+
+**Pipeline**
+
+```
+startExecute (after notify window)
+  → POST /v1/orders
+       amount = cart.totalPaise
+       currency = INR
+       receipt = attempt.id.slice(0,40)
+       notes = { correlationId, mandateId, attemptId, merchantId }
+       payment_capture = 1
+  → persist attempt.razorpayOrderId
+  → audit event razorpay.order_created layer=live
+  → ONLY THEN open Checkout { key, order_id, amount, handler }
+```
+
+**Rules**
+
+- No `order_id` → **do not** open Checkout. `failClosed("order_create_failed")`.
+- Checkout `amount` must equal Order amount (paise).
+- Put `Idempotency-Key: attempt.id` header on Orders (P1-5). If Razorpay ignores it, still dedupe locally: same `attempt.id` must not create a second order.
+
+**Parts**
+
+| Part | Job |
+|------|-----|
+| Orchestrator `startExecute` | Gate: window elapsed, guardrail already passed |
+| `createRazorpayOrder` | HTTP Basic `key_id:key_secret` |
+| `openRazorpayCheckout` | `order_id` **required** |
+| Audit | `orderId`, `amount`, `receipt` |
+
+**Done when.** Dashboard → Orders shows the order **before** you type the test card.
+
+---
+
+## P0-3. Wire `fetchRazorpayPayment` as source of truth for “captured”
+
+**Why.** Function exists and is **dead**. `confirmPayment` trusts the client. Spec: webhook **or poll**; sync response is not final.
+
+**Now.** [`store.ts`](src/lib/safebuy/store.ts) `confirmPayment` immediately subtracts `remainingPaise`.
+
+**Pipeline**
+
+```
+Checkout handler(payment_id, order_id, signature)
+  → audit razorpay.handler_received  (NOT confirmed)
+  → attempt.phase = pending
+  → attempt.razorpayPaymentId = payment_id
+  → startReconcile(attemptId)
+
+startReconcile:
+  loop i in 0..N (N=6, delay 2s — disclose as demo, not UPI SLA)
+    GET /v1/payments/:payment_id     already sketched in fetchRazorpayPayment
+    optionally GET /v1/orders/:order_id
+    if status in {captured, authorized}:
+         applyConfirm(source="fetch")
+         return
+    if status in {failed, cancelled, refunded}:
+         failClosed
+         return
+  timeout → failClosed("poll_timeout")
+            leave a flag reconcileOnWebhook=true
+```
+
+**`applyConfirm` (single function, used by fetch AND webhook)**
+
+Preconditions:
+
+- attempt exists  
+- not already `confirmed`  
+- `payment.amount === cart.totalPaise`  
+- `payment.order_id === attempt.razorpayOrderId`  
+- signature valid if present  
+
+Then:
+
+- mandate.remainingPaise -= total (once)  
+- stock decrement (P1-6)  
+- phase `confirmed`  
+- audit `razorpay.confirmed` with `source`, `status`, `paymentId`
+
+**Soft-decline lab** must call the **same** `startReconcile` with a stub status `failed`, not the current shortcut at `store.ts` ~443.
+
+**Done when.** Network tab shows GET payment after handler; mandate number changes only after `captured`.
+
+---
+
+## P0-4. Webhook + HMAC + tunnel
+
+**Why.** Spec: webhook is source of truth; poll is fallback. Sandbox cannot receive Razorpay; **your laptop can** via tunnel.
+
+**New pieces**
+
+```
+src/routes/api/razorpay/webhook.ts     POST raw body
+src/lib/safebuy/razorpay-webhook.ts    verify + map event → applyConfirm / failClosed
+```
+
+**Pipeline**
+
+```
+Razorpay
+  → POST https://<tunnel>/api/razorpay/webhook
+  headers: X-Razorpay-Signature
+  body: { event, payload.payment.entity | payload.order.entity }
+
+Your server:
+  1. Read RAW body string (not re-serialized JSON)
+  2. expected = HMAC_SHA256(raw, RAZORPAY_WEBHOOK_SECRET) hex
+  3. timingSafeEqual(expected, header) else 400
+  4. switch event:
+       payment.captured / order.paid → applyConfirm(source="webhook")
+       payment.failed                → failClosed if not already confirmed
+  5. Always 200 after durable persist (or 200 + ignore duplicate)
+```
+
+**Dashboard**
+
+- URL: tunnel HTTPS  
+- Events: `payment.captured`, `payment.failed`, `order.paid`  
+- Secret → env  
+
+**Race with poll**
+
+```
+applyConfirm is idempotent on payment_id
+if already confirmed: audit razorpay.duplicate_ignored, return
+```
+
+**Local runbook (README)**
+
+1. Start app.  
+2. Tunnel `https://xxx` → app `/api/razorpay/webhook`.  
+3. Paste URL in Razorpay test webhooks.  
+4. Do one payment.  
+5. Audit must show `source=webhook` **or** `source=fetch` then duplicate ignored.
+
+**Done when.** You can close the tab after handler and still land `confirmed` from webhook **or** poll.
+
+---
+
+## P0-5. Checkout handler signature verification
+
+**Why.** `RazorpaySuccess` has `razorpay_signature` unused. Anyone can call `confirmPayment` from the client today.
+
+**Pipeline**
+
+```
+handler payload:
+  razorpay_order_id
+  razorpay_payment_id
+  razorpay_signature
+
+server verifyCheckoutSignature({ orderId, paymentId, signature }):
+  message = `${orderId}|${paymentId}`
+  digest  = HMAC_SHA256(message, RAZORPAY_KEY_SECRET) hex
+  timingSafeEqual(digest, signature)
+```
+
+If invalid → `failClosed("bad_signature")`, do not poll as success.
+
+Call this **before** `startReconcile`. Webhook uses **webhook secret** (different key). Do not mix them.
+
+**Done when.** Tampering `payment_id` in DevTools cannot confirm.
+
+---
+
+# P1 — spec recovery that is currently theatre
+
+## P1-1. Soft decline: fetch, then at most one retry
+
+**Now.** Lab inject never hits Razorpay; chat lies “Fetched status first.”
+
+**Pipeline**
+
+```
+execute → Order created
+       → Checkout / charge
+       → pending
+       → Fetch status = failed | (lab: inject failed)
+audit payment.soft_decline { paymentId, status, retry=0 }
+
+IF retryCount == 0 AND status === failed AND order still payable:
+  retryCount++
+  create NEW order OR reuse if dashboard allows
+  open Checkout again
+  pending
+  Fetch again
+IF still failed:
+  stop, notify user, no third charge
+```
+
+**Invariant.** Never fire a second Order without a Fetch saying the first is `failed` (not `created`/`authorized`).
+
+**Done when.** Lab “soft decline” goes through `fetchRazorpayPayment` (mockable), audit has two Fetch rows, mandate unchanged.
+
+---
+
+## P1-2. Stock race + next-best through guardrail
+
+**Now.** Inject sets stock 0 and **aborts**. Spec: optional next-best **if guardrail still passes**.
+
+**Pipeline**
+
+```
+after planCart, before notify:
+  re-read stock (catalog + stockOverride)
+  if any line.stock < qty:
+    audit stock.unavailable { sku }
+    excluded.add(sku)
+    cart2 = planCart(mandate, intent) excluding excluded
+    guard2 = runGuardrail(cart2, mandate, intent)
+    if guard2.ok && cart2.lines.length:
+      audit stock.next_best { from, to }
+      pendingCart = cart2
+      continue notify
+    else:
+      fail/stop, ask new instruction
+      NEVER notify/debit
+```
+
+Do **not** debit then discover OOS.
+
+**Done when.** Lab stock-race either proposes another in-mandate SKU or stops with no Order.
+
+---
+
+## P1-3. Semantic mismatch: confirm modal, not hard stop only
+
+**Now.** `runGuardrail` sets `needsHumanConfirm` for intent mismatches; store only special-cases `afa_threshold`. Other failures go `stopped`.
+
+**Pipeline**
+
+```
+guard.ok → notify
+guard.code === afa_threshold OR guard.needsHumanConfirm
+  → phase = needs_confirm
+  → modal: show cart + mismatch reason
+       Confirm → treat as explicit override, then notify→window→execute
+       Cancel / new instruction → stopped
+guard.ok === false && !needsHumanConfirm
+  → stopped (deny list, over remaining cap, etc.)
+```
+
+Reuse the existing `needs_confirm` overlay. Split copy: “AFA ₹15k” vs “Item ≠ instruction.”
+
+**Done when.** Lab “LLM mismatch” (chocolate vs rice) shows Confirm/Cancel; Confirm is audited `semantic.human_override`.
+
+---
+
+## P1-4. Fail-closed + late captured reconcile
+
+**Now.** Dismiss → `failClosed`. If payment actually captured later, mandate never updates **or** you might confirm twice if you also add webhooks badly.
+
+**Pipeline**
+
+```
+failClosed:
+  phase=failed
+  audit fail_closed
+  attempt.razorpayStatus stays pending/unknown
+  do NOT free the order as “never charged” in UI — say “unconfirmed, treated failed”
+
+webhook payment.captured later:
+  applyConfirm:
+    if phase===confirmed: duplicate_ignored
+    if phase===failed:
+      applyConfirm
+      audit reconciled_after_fail_closed
+      remainingPaise -=  (once, by payment_id uniqueness)
+```
+
+**Done when.** One payment_id can move remaining **exactly once**, even if handler dismissed.
+
+---
+
+## P1-5. Idempotency
+
+**Two layers**
+
+1. **Razorpay:** header `Idempotency-Key: ${attempt.id}` on `POST /v1/orders`. Verify in dashboard (duplicate POST same key → same order). If they ignore it, document that.  
+2. **You:** table/map `confirmedPaymentIds: Set<string>`. `applyConfirm` returns immediately if set has `payment_id`. Also unique `attemptId → orderId` (one order per attempt).
+
+**Done when.** Double-click Send during window cannot create two orders for one attempt; double webhook cannot double-debit.
+
+---
+
+## P1-6. Inventory decrement on captured only
+
+**Now.** [`catalog.ts`](src/lib/safebuy/catalog.ts) is a const; `stockOverride` only used for the lab race.
+
+**Pipeline**
+
+```
+applyConfirm:
+  for line in cart.lines:
+    stock[sku] = max(0, stock[sku] - qty)
+    if would go negative: audit inventory.overshoot (shouldn’t if P1-2 ran)
+```
+
+Keep stock in the same store as mandate (or a `Map` in Zustand). Persist it. Reset Demo restores catalog.
+
+**Done when.** Two successful rice buys reduce `RICE-BAS-1KG` stock in the catalog panel.
+
+---
+
+## P1-7. Optional Grok parse on the real path
+
+**Now.** `parseIntentWithGrok` exists; Buy panel only `runInstruction(text)` → `parseIntentDeterministic`.
+
+**Pipeline**
+
+```
+Send:
+  intentDet = parseIntentDeterministic(text)
+  intent = intentDet
+  try:
+    grok = parseIntentWithGrok({ text })  timeout 4s already
+    intent = coerceIntent(grok, text)     never raw LLM
+    audit intent.source = grok|deterministic
+  runInstruction(text, intent)
+  guardrail diffs cart vs intent  (already)
+```
+
+If Grok times out, continue with deterministic. **Never** block the buy on LLM.
+
+**Done when.** Audit shows `intent.parsed` payload + `source`. Guardrail still blocks chocolate.
+
+---
+
+## P1-8. Use phase `pending`
+
+**Now.** `AgentPhase` includes `pending`; never set.
+
+Set it in handler (P0-3). UI: badge `PENDING · waiting Razorpay status`. Disable Send while pending.
+
+---
+
+# P2 — judges / hygiene
+
+## P2-1. README (they read “what broke” first)
+
+Must include:
+
+- Option B only  
+- LIVE vs SYNTHETIC table (mandate/guardrail/order/fetch/webhook LIVE; catalog/SMS/AFA PIN/5s window SYNTHETIC)  
+- Env vars  
+- Test card `4111 1111 1111 1111`  
+- Tunnel steps  
+- Compressed 5s window disclosure  
+- **What broke:** e.g. Checkout-without-order, dead Fetch, localStorage audit — and what you fixed  
+- Explicit: no silent debit on Indian rails; notify→execute is the product answer to UAP/AP2 gap  
+
+## P2-2. Architecture one-pager
+
+Sequence: Mandate → Intent → Plan → Guardrail → Notify → Order → Pending → Webhook/Poll → Audit hash.
+
+Label each arrow LIVE or SYNTHETIC.
+
+## P2-3. Pitch 5 min
+
+- 0:00 problem (merchant not agent-transactable; no silent debit)  
+- 1:00 happy path screen recording  
+- 2:30 semantic mismatch  
+- 3:30 show audit hash + Razorpay dashboard order  
+- 4:30 what we refused to fake  
+
+## P2-4. Tests (minimal)
+
+| File | Cases |
+|------|--------|
+| `guardrail.test.ts` | over cap; deny brand; mismatch needs confirm; AFA 15k |
+| `hash.test.ts` | chain verifies; tamper payload breaks |
+| `applyConfirm.test.ts` | duplicate payment_id; amount mismatch rejected |
+
+## P2-5. Append-only audit store (optional but strong)
+
+Replace Zustand persist for audit with:
+
+- `INSERT` only  
+- columns: seq, payload_json, prev_hash, hash  
+- `verifyChain()` in Audit tab  
+- localStorage may remain a cache  
+
+Do **not** UPDATE rows.
+
+## P2-6. Remove sample key from git history of the public repo
+
+`.env.example` with empty values. `.gitignore` `.env`.
+
+---
+
+# Suggested module split when you rewrite money path
+
+```
+applyConfirm(attempt, payment, source)   // THE only mutator of remainingPaise
+verifyCheckoutSignature(...)
+verifyWebhookSignature(raw, header)
+startReconcile(attemptId)
+createRazorpayOrder(...)                 // exists, tighten
+fetchRazorpayPayment(...)                // exists, CALL it
+POST /api/razorpay/webhook
+```
+
+`store.confirmPayment` should become a thin wrapper around `applyConfirm`.
+
+---
+
+# Order of work (do not parallelize P0)
+
+1. Keys + fail if missing  
+2. Order always + Checkout requires `order_id`  
+3. `pending` + Fetch + `applyConfirm`  
+4. Checkout HMAC  
+5. Webhook HMAC + idempotent `applyConfirm`  
+6. P1 recoveries (decline, stock, semantic, late capture)  
+7. README / tests / video  
+
+Until **3** is done, do not polish UI. Until **5**, do not pitch “webhook is source of truth.”
+
+---
+
+# Acceptance bar (when you can stop)
+
+A reviewer can:
+
+1. Create mandate (PIN labelled synthetic).  
+2. Buy rice under ₹150.  
+3. See notify window (labelled compressed).  
+4. See **their** test Order in Razorpay dashboard.  
+5. Pay with test card.  
+6. See audit: order_created → pending → confirmed **from fetch or webhook**.  
+7. Lab mismatch blocks or asks confirm.  
+8. README states LIVE vs SYNTHETIC and the silent-debit gap.
+
+That is the whole remaining system. Everything else in the original spec is either already in [`src/lib/safebuy/`](src/lib/safebuy/) or explicitly **designed / not this submission**.
