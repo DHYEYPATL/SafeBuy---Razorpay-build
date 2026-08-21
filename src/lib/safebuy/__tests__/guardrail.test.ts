@@ -16,9 +16,10 @@ const mockMandate: Mandate = {
   maxQuantityPerItem: 3,
   priceCeilingPerItemPaise: 50000, // ₹500
   createdAt: new Date().toISOString(),
+  validUntil: new Date(Date.now() + 7 * 86400000).toISOString(),
   revokedAt: null,
-  afaSimulatedAt: new Date().toISOString(),
-  afaMethod: "simulated_upi_pin",
+  authorizedBy: "human_user",
+  authorizationMethod: "simulated_registration_auth",
 };
 
 const mockIntent: StructuredIntent = {
@@ -28,6 +29,10 @@ const mockIntent: StructuredIntent = {
   brandsDeny: [],
   maxQuantityPerItem: 1,
   priceCeilingPerItemPaise: 15000,
+  packTokens: ["basmati"],
+  excludeTokens: [],
+  qty: 1,
+  packSizeHint: "1kg",
   queryText: "Buy 1 kg basmati under ₹150",
 };
 
@@ -41,7 +46,17 @@ const riceLine: CartLine = {
   linePaise: 13500,
 };
 
-test("Guardrail: passes for compliant cart within mandate and intent", () => {
+const attaLine: CartLine = {
+  sku: "ATA-WHL-5KG",
+  name: "Whole Wheat Atta 5 kg",
+  brand: "Aashirvaad",
+  category: "grains",
+  unitPricePaise: 27500,
+  quantity: 1,
+  linePaise: 27500,
+};
+
+test("Guardrail: passes for compliant cart matching packTokens and budget", () => {
   const res = runGuardrail({
     lines: [riceLine],
     totalPaise: 13500,
@@ -51,6 +66,21 @@ test("Guardrail: passes for compliant cart within mandate and intent", () => {
 
   assert.equal(res.ok, true);
   assert.equal(res.code, "pass");
+});
+
+test("Guardrail: catches real agentic failure (same-category substitution e.g. atta for basmati)", () => {
+  // User asked for "basmati" (grains), but cart has "atta" (grains)
+  const res = runGuardrail({
+    lines: [attaLine],
+    totalPaise: 27500,
+    mandate: { ...mockMandate, maxAmountPaise: 50000, remainingPaise: 50000 },
+    intent: { ...mockIntent, maxAmountPaise: 50000 },
+  });
+
+  // Guardrail must catch that "basmati" is missing from the cart!
+  assert.equal(res.ok, false);
+  assert.equal(res.code, "semantic_mismatch");
+  assert.equal(res.needsHumanConfirm, true);
 });
 
 test("Guardrail: blocks when budget exceeds remaining mandate cap", () => {
@@ -65,16 +95,16 @@ test("Guardrail: blocks when budget exceeds remaining mandate cap", () => {
   assert.equal(res.code, "mandate_exceeded");
 });
 
-test("Guardrail: blocks on revoked mandate", () => {
+test("Guardrail: blocks on expired mandate policy", () => {
   const res = runGuardrail({
     lines: [riceLine],
     totalPaise: 13500,
-    mandate: { ...mockMandate, status: "revoked" },
+    mandate: { ...mockMandate, validUntil: new Date(Date.now() - 86400000).toISOString() },
     intent: mockIntent,
   });
 
   assert.equal(res.ok, false);
-  assert.equal(res.code, "mandate_revoked");
+  assert.equal(res.code, "mandate_expired");
 });
 
 test("Guardrail: blocks on denied brand", () => {
@@ -97,23 +127,4 @@ test("Guardrail: blocks on denied brand", () => {
 
   assert.equal(res.ok, false);
   assert.equal(res.code, "semantic_mismatch");
-});
-
-test("Guardrail: flags needsHumanConfirm when above ₹15,000 AFA threshold", () => {
-  const expensiveLine: CartLine = {
-    ...riceLine,
-    unitPricePaise: 1600000,
-    linePaise: 1600000,
-  };
-
-  const res = runGuardrail({
-    lines: [expensiveLine],
-    totalPaise: 1600000,
-    mandate: { ...mockMandate, maxAmountPaise: 2000000, remainingPaise: 2000000 },
-    intent: { ...mockIntent, maxAmountPaise: 2000000 },
-  });
-
-  assert.equal(res.ok, false);
-  assert.equal(res.code, "afa_threshold");
-  assert.equal(res.needsHumanConfirm, true);
 });
