@@ -9,16 +9,21 @@ import {
   AlertTriangle,
   Check,
   Clock,
+  CheckCircle2,
+  XCircle,
+  Key,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LayerBadge } from "./layer-badge";
 import { CATEGORIES, DEMO_NOTIFY_WINDOW_MS, MERCHANT_NAME, type Category, type LabInject } from "@/lib/safebuy/types";
 import { CATALOG, merchantMeta } from "@/lib/safebuy/catalog";
-import { useSafeBuy } from "@/lib/safebuy/store";
+import { useSafeBuy, liveStock } from "@/lib/safebuy/store";
 import { paiseToInr, shortHash } from "@/lib/utils";
 import { createRazorpayOrder, getRazorpayPublicKey } from "@/lib/safebuy/razorpay-api";
+import { verifyCheckoutSignature } from "@/lib/safebuy/signature";
 import { openRazorpayCheckout } from "@/lib/safebuy/checkout";
+import { verifyAuditChain, type ChainVerificationResult } from "@/lib/safebuy/hash";
 
 type Tab = "buy" | "mandate" | "audit" | "lab" | "spec";
 
@@ -34,9 +39,16 @@ export function SafeBuyApp() {
   const [tab, setTab] = useState<Tab>("mandate");
   const phase = useSafeBuy((s) => s.phase);
   const mandate = useSafeBuy((s) => s.mandate);
+  const isConfigured = useSafeBuy((s) => s.isConfigured);
 
   useEffect(() => {
-    void getRazorpayPublicKey().then((k) => useSafeBuy.getState().setRazorpayKey(k.keyId));
+    void getRazorpayPublicKey().then((k) => {
+      useSafeBuy.getState().setRazorpayKeyDetails({
+        keyId: k.keyId,
+        hasSecret: k.hasSecret,
+        configured: k.configured,
+      });
+    });
   }, []);
 
   useEffect(() => {
@@ -56,6 +68,16 @@ export function SafeBuyApp() {
   return (
     <div className="mx-auto min-h-screen max-w-6xl px-4 pb-28 pt-6 sm:px-6 sm:pb-10">
       <Header />
+
+      {!isConfigured ? (
+        <div className="mt-4 flex items-center gap-3 rounded-[var(--radius-md)] border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+          <AlertTriangle className="size-4 shrink-0 text-amber-400" />
+          <span>
+            <strong>Razorpay test credentials missing:</strong> Set <code>RAZORPAY_KEY_ID</code> and <code>RAZORPAY_KEY_SECRET</code> in environment. Live Orders & money path require valid test API keys.
+          </span>
+        </div>
+      ) : null}
+
       <nav className="mt-6 hidden gap-1 sm:flex">
         {LABELS.map((t) => (
           <button
@@ -104,6 +126,8 @@ export function SafeBuyApp() {
 function Header() {
   const mandate = useSafeBuy((s) => s.mandate);
   const phase = useSafeBuy((s) => s.phase);
+  const isConfigured = useSafeBuy((s) => s.isConfigured);
+
   return (
     <header className="flex flex-wrap items-end justify-between gap-4">
       <div>
@@ -118,7 +142,12 @@ function Header() {
         <Badge tone={mandate?.status === "active" ? "ok" : "neutral"}>
           {mandate ? `Mandate ${mandate.status}` : "No mandate"}
         </Badge>
-        <Badge tone="neutral">{phase}</Badge>
+        <Badge tone={phase === "pending" ? "warn" : phase === "confirmed" ? "ok" : phase === "failed" ? "bad" : "neutral"}>
+          {phase === "pending" ? "PENDING · verifying status" : phase}
+        </Badge>
+        <Badge tone={isConfigured ? "ok" : "warn"}>
+          {isConfigured ? "Razorpay Test Live" : "Keys Missing"}
+        </Badge>
         {mandate ? <span className="font-mono text-sm tabular-nums">{paiseToInr(mandate.remainingPaise)} left</span> : null}
       </div>
     </header>
@@ -279,12 +308,16 @@ function MandatePreview() {
 
 function BuyPanel({ onNeedMandate }: { onNeedMandate: () => void }) {
   const mandate = useSafeBuy((s) => s.mandate);
+  const phase = useSafeBuy((s) => s.phase);
   const chat = useSafeBuy((s) => s.chat);
   const pending = useSafeBuy((s) => s.pendingCart);
   const intent = useSafeBuy((s) => s.pendingIntent);
+  const stockOverride = useSafeBuy((s) => s.stockOverride);
   const [text, setText] = useState("Buy 1 kg basmati under ₹150");
   const [busy, setBusy] = useState(false);
   const meta = merchantMeta();
+
+  const isExecuting = ["planning", "window", "execute", "pending"].includes(phase);
 
   async function send() {
     if (!mandate) {
@@ -358,9 +391,10 @@ function BuyPanel({ onNeedMandate }: { onNeedMandate: () => void }) {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Buy 1 kg basmati under ₹150"
+            disabled={busy || isExecuting}
           />
-          <Button type="submit" disabled={busy}>
-            {busy ? "Planning" : "Send"}
+          <Button type="submit" disabled={busy || isExecuting}>
+            {busy ? "Planning" : isExecuting ? phase : "Send"}
           </Button>
         </form>
       </section>
@@ -373,17 +407,23 @@ function BuyPanel({ onNeedMandate }: { onNeedMandate: () => void }) {
           <LayerBadge layer="synthetic" />
         </div>
         <ul className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto">
-          {CATALOG.map((i) => (
-            <li key={i.sku} className="rounded-[var(--radius-sm)] border border-border px-3 py-2">
-              <div className="flex justify-between gap-2 text-sm">
-                <span>{i.name}</span>
-                <span className="font-mono tabular-nums">{paiseToInr(i.pricePaise)}</span>
-              </div>
-              <p className="text-[11px] text-subtle">
-                {i.brand} · {i.category} · {i.sku}
-              </p>
-            </li>
-          ))}
+          {CATALOG.map((i) => {
+            const stock = liveStock(i.sku, stockOverride);
+            return (
+              <li key={i.sku} className={`rounded-[var(--radius-sm)] border p-3 ${stock === 0 ? "border-danger/30 bg-danger/5 opacity-60" : "border-border"}`}>
+                <div className="flex justify-between gap-2 text-sm font-medium">
+                  <span>{i.name}</span>
+                  <span className="font-mono tabular-nums">{paiseToInr(i.pricePaise)}</span>
+                </div>
+                <div className="mt-1 flex items-center justify-between text-[11px] text-subtle">
+                  <span>{i.brand} · {i.category}</span>
+                  <span className={stock === 0 ? "text-danger font-semibold" : ""}>
+                    {stock === 0 ? "Out of Stock" : `${stock} in stock`}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       </aside>
     </div>
@@ -392,15 +432,57 @@ function BuyPanel({ onNeedMandate }: { onNeedMandate: () => void }) {
 
 function AuditPanel() {
   const audit = useSafeBuy((s) => s.audit);
+  const [verifyState, setVerifyState] = useState<ChainVerificationResult | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  async function checkChain() {
+    setIsVerifying(true);
+    try {
+      const res = await verifyAuditChain(audit);
+      setVerifyState(res);
+    } finally {
+      setIsVerifying(false);
+    }
+  }
+
   return (
     <section className="rounded-[var(--radius-xl)] border border-border bg-surface p-5">
-      <div className="flex items-center justify-between">
-        <h2 className="font-display text-2xl">Hash-chained audit</h2>
-        <LayerBadge layer="live" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="font-display text-2xl">Hash-chained audit</h2>
+            <LayerBadge layer="live" />
+          </div>
+          <p className="mt-1 text-sm text-muted">
+            Append-only. Each record hashes the previous hash plus canonical JSON. Cryptographically immutable.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => void checkChain()} disabled={isVerifying || audit.length === 0}>
+          {isVerifying ? "Verifying..." : "Verify Audit Chain"}
+        </Button>
       </div>
-      <p className="mt-1 text-sm text-muted">
-        Append-only. Each record hashes the previous hash plus canonical JSON. No updates.
-      </p>
+
+      {verifyState ? (
+        <div
+          className={`mt-4 flex items-center gap-3 rounded-[var(--radius-md)] border p-3 text-xs ${
+            verifyState.valid
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+              : "border-rose-500/30 bg-rose-500/10 text-rose-300"
+          }`}
+        >
+          {verifyState.valid ? (
+            <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
+          ) : (
+            <XCircle className="size-4 shrink-0 text-rose-400" />
+          )}
+          <span>
+            {verifyState.valid
+              ? `Cryptographic Chain Verified: All ${verifyState.totalRecords} records form an unbroken, untampered SHA-256 hash sequence from genesis.`
+              : `Audit Verification Failed: ${verifyState.error}`}
+          </span>
+        </div>
+      ) : null}
+
       <ol className="mt-4 space-y-3">
         {audit.length === 0 ? <p className="text-sm text-muted">No events yet.</p> : null}
         {[...audit].reverse().map((r) => (
@@ -426,12 +508,12 @@ function LabPanel() {
   const lab = useSafeBuy((s) => s.labInject);
   const setLab = useSafeBuy((s) => s.setLabInject);
   const items: { id: LabInject; title: string; detail: string }[] = [
-    { id: "none", title: "Happy path", detail: "No injection. Real Razorpay checkout after notify window." },
-    { id: "soft_decline", title: "Soft decline", detail: "Fetch status before retry. Stop. No double charge." },
-    { id: "stock_race", title: "Stock race", detail: "SKU hits 0 after discovery. Abort before debit." },
-    { id: "semantic_mismatch", title: "LLM mismatch", detail: "Agent picks chocolate vs rice. Guardrail blocks." },
-    { id: "afa_threshold", title: "Above ₹15k", detail: "Requires human re-confirm. No silent debit." },
-    { id: "revoke_in_window", title: "Revoke in window", detail: "Future blocked; in-flight still completes." },
+    { id: "none", title: "Happy path", detail: "No injection. Real Razorpay Orders + Checkout + status fetch reconciliation." },
+    { id: "soft_decline", title: "Soft decline", detail: "Fetch status before retry. Stops safely at 1 retry. No multiple charges." },
+    { id: "stock_race", title: "Stock race", detail: "SKU drops to 0 after discovery. Automatically seeks next-best in-mandate item." },
+    { id: "semantic_mismatch", title: "LLM mismatch", detail: "Agent proposes chocolate for rice instruction. Guardrail halts for human confirm." },
+    { id: "afa_threshold", title: "Above ₹15k", detail: "Requires explicit human re-confirm. No silent debit above RBI threshold." },
+    { id: "revoke_in_window", title: "Revoke in window", detail: "Future blocked; in-flight still completes under previously valid mandate." },
   ];
   return (
     <section className="rounded-[var(--radius-xl)] border border-border bg-surface p-5">
@@ -470,9 +552,9 @@ function SpecPanel() {
           {[
             ["Structured Intent Mandate", "Human sets hard caps. Schema is the source of truth."],
             ["Deterministic semantic guardrail", "Diffs cart vs mandate + parsed intent before money."],
-            ["Notify → window → execute", "No silent debit. Gate is part of the product."],
-            ["Real Razorpay test-mode debit", "Checkout.js / Orders after the window. Actual money API."],
-            ["Hash-chained audit", "Append-only, every money action explained."],
+            ["Notify → window → execute", "No silent debit. Gate is part of the product solving UAP/AP2 gap."],
+            ["Real Razorpay test-mode debit", "Orders API + Checkout.js + status fetch/webhook reconciliation."],
+            ["Hash-chained audit", "Append-only, every money action signed with canonical JSON + SHA-256 prevHash."],
             ["Fail-closed + future-only revoke", "Ambiguity is failure. In-flight payments are not unsent."],
           ].map(([t, d]) => (
             <li key={t} className="flex gap-3">
@@ -534,7 +616,7 @@ function GateOverlay() {
           </p>
           <p className="mt-2 text-xs text-subtle">
             Compressed {DEMO_NOTIFY_WINDOW_MS / 1000}s window standing in for RBI notify-then-execute. After this, a
-            real Razorpay test checkout opens.
+            real Razorpay test checkout opens with an Order ID.
           </p>
           <div className="mt-4 h-1 overflow-hidden rounded-full bg-elevated">
             <div className="h-full bg-primary" style={{ width: `${pct * 100}%` }} />
@@ -551,19 +633,34 @@ function GateOverlay() {
   }
 
   if (phase === "needs_confirm" && cart) {
+    const isAfa = attempt?.failure === "afa_threshold";
     return (
       <div className="fixed inset-0 z-40 flex items-end justify-center bg-bg/70 p-4 sm:items-center">
         <div className="w-full max-w-md rounded-[var(--radius-xl)] border border-border bg-surface p-5">
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-5 text-warn" />
-            <h3 className="font-display text-xl">Human confirmation required</h3>
+            <h3 className="font-display text-xl">
+              {isAfa ? "AFA Confirmation Required" : "Intent Mismatch Detected"}
+            </h3>
           </div>
           <p className="mt-2 text-sm text-muted">
-            Amount is above the ₹15,000 AFA-exempt threshold (or a semantic mismatch needs your OK).
+            {isAfa
+              ? "Amount is above the ₹15,000 AFA-exempt threshold. Extra human confirmation is required."
+              : `The proposed cart (${cart.lines.map((l) => l.name).join(", ")}) does not perfectly align with the parsed instruction categories. Confirm override to proceed.`}
           </p>
-          <p className="mt-2 font-mono text-lg">{paiseToInr(cart.totalPaise)}</p>
+          <p className="mt-2 font-mono text-lg font-semibold">{paiseToInr(cart.totalPaise)}</p>
           <div className="mt-4 flex gap-2">
-            <Button onClick={() => void useSafeBuy.getState().confirmAfaOverride()}>Confirm</Button>
+            <Button
+              onClick={() => {
+                if (isAfa) {
+                  void useSafeBuy.getState().confirmAfaOverride();
+                } else {
+                  void useSafeBuy.getState().confirmSemanticOverride();
+                }
+              }}
+            >
+              Confirm & Proceed
+            </Button>
             <Button variant="outline" onClick={() => void useSafeBuy.getState().abortPending("Human declined extra confirmation.")}>
               Cancel
             </Button>
@@ -581,6 +678,16 @@ function GateOverlay() {
       </div>
     );
   }
+
+  if (phase === "pending") {
+    return (
+      <div className="fixed bottom-20 right-4 z-40 flex items-center gap-2 rounded-[var(--radius-md)] border border-amber-500/30 bg-surface px-3 py-2 text-xs text-amber-200 shadow-lg sm:bottom-6">
+        <Clock className="size-4 animate-spin text-amber-400" />
+        <span>Verifying payment status with Razorpay (reconciliation loop)...</span>
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -591,6 +698,7 @@ async function openLiveCheckout() {
     await st.failClosed("No cart at execute time.");
     return;
   }
+
   try {
     const order = await createRazorpayOrder({
       data: {
@@ -603,18 +711,21 @@ async function openLiveCheckout() {
         },
       },
     });
-    if (!order.ok) {
-      await st.failClosed(order.error);
+
+    if (!order.ok || !order.orderId) {
+      await st.failClosed(order.error || "Order creation failed. Live Checkout requires a valid Razorpay Order ID.");
       return;
     }
+
     await st.appendAudit({
       correlationId: st.correlationId ?? "",
       phase: "execute",
-      event: order.usedOrdersApi ? "razorpay.order_created" : "razorpay.checkout_without_order",
+      event: "razorpay.order_created",
       layer: "live",
       explain: order.note,
       payload: { orderId: order.orderId, amount: order.amount },
     });
+
     await openRazorpayCheckout({
       key: order.keyId,
       amountPaise: cart.totalPaise,
@@ -622,8 +733,22 @@ async function openLiveCheckout() {
       name: MERCHANT_NAME,
       description: cart.lines.map((l) => l.name).join(", "),
       notes: { safebuy: "1" },
-      onSuccess: (p) => {
-        void st.confirmPayment(p.razorpay_payment_id, p.razorpay_order_id ?? order.orderId);
+      onSuccess: async (p) => {
+        // If signature is returned, verify server-side
+        if (p.razorpay_signature) {
+          const sigRes = await verifyCheckoutSignature({
+            data: {
+              orderId: p.razorpay_order_id ?? order.orderId,
+              paymentId: p.razorpay_payment_id,
+              signature: p.razorpay_signature,
+            },
+          });
+          if (!sigRes.ok) {
+            await st.failClosed("HMAC signature verification failed on Checkout response.");
+            return;
+          }
+        }
+        await st.handleHandlerReceived(p.razorpay_payment_id, p.razorpay_order_id ?? order.orderId, p.razorpay_signature);
       },
       onDismiss: () => {
         void st.failClosed("Checkout dismissed. Treated as failed (fail-closed).");
