@@ -49,8 +49,9 @@ SafeBuy maintains a strict, transparent boundary between real production logic a
 | **Merchant Order & Stock Reservation** | **LIVE** | Creates durable `MerchantOrder` reserving catalog inventory before the notice window; settles to `paid` or releases on abort. |
 | **Pre-Debit Notice Record** | **LIVE** | Creates a durable `PreDebitNotice` record with timestamp thresholds (`executeAfter`), dwell countdown, and hold/extend controls. |
 | **Razorpay Orders API** | **LIVE** | Real `POST /v1/orders` created before debit with receipt ID, correlation IDs, and attempt metadata. Checkout requires `order_id`. |
-| **Reconciliation Spine** | **LIVE** | Backend polling of `GET /v1/payments/:id` + Webhook HMAC verification. Mandate decrements only when `status === "captured"`. |
+| **In-Session Reconciliation Loop** | **LIVE** | Backend polling of `GET /v1/payments/:id`. Mandate decrements only when `status === "captured"`. |
 | **HMAC Signature Verification** | **LIVE** | Server-side cryptographic verification of Checkout `order_id|payment_id` and Webhook payloads. |
+| **Webhook Subsystem** | **LIVE** | HMAC SHA-256 validation module and payload parser implemented in `src/lib/safebuy/razorpay-webhook.ts` and verified via automated unit test suite. |
 | **Hash-Chained Audit Trail** | **LIVE** | Sequential SHA-256 hash chaining with canonical JSON and interactive UI verification. |
 | **Merchant Catalog (Nila Kirana)** | **SYNTHETIC** | Stand-in grocery merchant catalog providing realistic agent-readable SKUs. |
 | **Bank Pre-debit SMS** | **SYNTHETIC** | Simulated in-app notice standing in for RBI 24h SMS notice. |
@@ -130,12 +131,10 @@ When Razorpay Checkout opens, use test mode credentials:
 - **Success Test Card:** `4111 1111 1111 1111`, Expiry: future date (`12/30`), CVV: `123`, OTP: `123456`.
 - **Soft Decline Card:** `4000 0000 0000 1003` (Returns card declined / insufficient funds to test retry cap).
 
-### 4. Webhook Tunnel Setup
-To receive live Razorpay Webhooks on your local machine:
-1. Start tunnel: `ngrok http 8080`
-2. In Razorpay Dashboard -> Settings -> Webhooks, add endpoint:
-   `https://<your-tunnel-url>/api/razorpay/webhook`
-3. Select events: `payment.captured`, `payment.failed`, `order.paid`.
+### 4. Webhook Subsystem (Optional Tunnel Extension)
+The webhook parser and HMAC SHA-256 verifier are fully tested in `src/lib/safebuy/__tests__/signature.test.ts`. 
+- **Primary in-session demo settlement:** Real-time Fetch status polling (`GET /v1/payments/:id`).
+- **External Webhook testing (optional):** Start tunnel `ngrok http 8080` and point Razorpay Dashboard webhooks to `https://<tunnel-url>/api/razorpay/webhook`.
 
 ---
 
