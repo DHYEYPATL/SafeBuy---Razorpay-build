@@ -688,8 +688,21 @@ function LabPanel() {
   ];
   return (
     <section className="rounded-[var(--radius-xl)] border border-border bg-surface p-5">
-      <h2 className="font-display text-2xl">Failure lab</h2>
-      <p className="mt-1 text-sm text-muted">Inject one edge case, then send an instruction on Buy.</p>
+      <h2 className="font-display text-2xl">Failure lab & Rail Simulation</h2>
+      <p className="mt-1 text-sm text-muted">Inject an edge case scenario, then send a purchase instruction in the Buy panel.</p>
+
+      <div className="mt-4 rounded-[var(--radius-md)] border border-border bg-elevated/50 p-3">
+        <p className="text-xs font-medium uppercase tracking-wider text-subtle">Razorpay Test Cards</p>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs font-mono">
+          <span className="rounded bg-surface px-2.5 py-1 text-emerald-400 border border-emerald-500/30">
+            Success: 4111 1111 1111 1111 (Exp: 12/30, CVV: 123)
+          </span>
+          <span className="rounded bg-surface px-2.5 py-1 text-amber-400 border border-amber-500/30">
+            Soft Decline: 4000 0000 0000 1003 (Exp: 12/30, CVV: 123)
+          </span>
+        </div>
+      </div>
+
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {items.map((it) => (
           <button
