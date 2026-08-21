@@ -142,6 +142,82 @@ function authPopupPlugin(): Plugin {
   };
 }
 
+function razorpayWebhookPlugin(): Plugin {
+  return {
+    name: "app-builder:razorpay-webhook",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        try {
+          const rawUrl = req.url ?? "";
+          const pathOnly = rawUrl.split("?", 1)[0] ?? "";
+          if (pathOnly !== "/api/razorpay/webhook") {
+            next();
+            return;
+          }
+
+          if ((req.method ?? "GET").toUpperCase() === "GET") {
+            res.statusCode = 200;
+            res.setHeader("content-type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: true,
+                endpoint: "/api/razorpay/webhook",
+                method: "POST",
+                description: "Live Razorpay Webhook Ingress with raw body HMAC SHA-256 validation.",
+              }),
+            );
+            return;
+          }
+
+          if ((req.method ?? "GET").toUpperCase() !== "POST") {
+            res.statusCode = 405;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ ok: false, error: "Method Not Allowed" }));
+            return;
+          }
+
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) {
+            chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+          }
+          const rawBody = Buffer.concat(chunks).toString("utf8");
+          const signature = (req.headers["x-razorpay-signature"] as string) || null;
+
+          const mod = (await server.ssrLoadModule("/src/lib/safebuy/razorpay-webhook.ts")) as typeof import("./src/lib/safebuy/razorpay-webhook");
+          const result = mod.handleRazorpayWebhookPayload({ rawBody, signature });
+
+          if (!result.ok || result.action === "rejected") {
+            res.statusCode = 400;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ ok: false, error: result.error }));
+            return;
+          }
+
+          res.statusCode = 200;
+          res.setHeader("content-type", "application/json");
+          res.end(
+            JSON.stringify({
+              ok: true,
+              received: true,
+              action: result.action,
+              event: result.event,
+              paymentId: result.paymentId,
+              orderId: result.orderId,
+            }),
+          );
+        } catch (err) {
+          console.error("[app-builder] /api/razorpay/webhook error:", err);
+          if (!res.headersSent) {
+            res.statusCode = 500;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ ok: false, error: String(err) }));
+          }
+        }
+      });
+    },
+  };
+}
+
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
@@ -161,6 +237,8 @@ export default defineConfig(({ command, isPreview }) => ({
     pgliteBootstrapPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.
     authPopupPlugin(),
+    // Real HTTP Webhook route for Razorpay events
+    razorpayWebhookPlugin(),
     // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.
     appEnvPlugin(),
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
