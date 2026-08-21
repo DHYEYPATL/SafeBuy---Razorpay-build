@@ -1,6 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { coerceIntent, parseIntentDeterministic } from "./parse-intent";
 
+// Server-side rate limiter for test Order creation to prevent quota exhaustion
+const recentOrderTimestamps: number[] = [];
+const MAX_ORDERS_PER_MINUTE = 20;
+const MAX_SINGLE_ORDER_PAISE = 1_500_000; // ₹15,000 ceiling
+
 export const getRazorpayPublicKey = createServerFn({ method: "GET" }).handler(
   async () => {
     const key = process.env.RAZORPAY_KEY_ID || process.env.VITE_RAZORPAY_KEY_ID || "";
@@ -23,6 +28,27 @@ export const createRazorpayOrder = createServerFn({ method: "POST" })
       return {
         ok: false as const,
         error: "Razorpay test credentials missing. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your environment.",
+      };
+    }
+
+    // 1. Server-side Rate Limiting
+    const now = Date.now();
+    while (recentOrderTimestamps.length > 0 && now - recentOrderTimestamps[0]! > 60_000) {
+      recentOrderTimestamps.shift();
+    }
+    if (recentOrderTimestamps.length >= MAX_ORDERS_PER_MINUTE) {
+      return {
+        ok: false as const,
+        error: "Rate limit reached: Maximum 20 orders per minute allowed to protect test quota.",
+      };
+    }
+    recentOrderTimestamps.push(now);
+
+    // 2. Server-side Amount Sanity Check
+    if (data.amountPaise <= 0 || data.amountPaise > MAX_SINGLE_ORDER_PAISE) {
+      return {
+        ok: false as const,
+        error: `Invalid order amount: ₹${data.amountPaise / 100}. Must be between ₹1 and ₹15,000.`,
       };
     }
 
@@ -147,4 +173,3 @@ export const processRazorpayWebhookEvent = createServerFn({ method: "POST" })
       signature: data.signature,
     });
   });
-
