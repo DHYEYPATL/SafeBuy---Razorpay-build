@@ -667,10 +667,10 @@ export const useSafeBuy = create<SafeBuyState>()(
         const cart = st.pendingCart;
         if (!attempt || !cart) return;
 
-        // Data gate: verify notice exists and is issued
+        // Data gate: strictly require PreDebitNotice record in 'issued' status
         const notice = st.notices.find((n) => n.attemptId === attempt.id);
-        if (notice && notice.status !== "issued") {
-          await st.failClosed("Execution blocked: Pre-debit notice was cancelled or expired.");
+        if (!notice || notice.status !== "issued") {
+          await st.failClosed("Execution blocked: Valid issued PreDebitNotice record required before payment.");
           return;
         }
 

@@ -11,7 +11,7 @@ Execute in project root:
 # 1. Typecheck: Zero compiler errors
 npm run typecheck
 
-# 2. Automated Unit Tests: 16/16 tests passing
+# 2. Automated Unit Tests: 18/18 tests passing
 npm run test:unit
 ```
 
@@ -20,24 +20,26 @@ Expected Output:
 > tsx --test "src/lib/safebuy/__tests__/*.test.ts"
 
 TAP version 13
-ok 1 - Guardrail: passes for compliant cart matching packTokens and budget
-ok 2 - Guardrail: catches real agentic failure (same-category substitution e.g. atta for basmati)
-ok 3 - Guardrail: blocks when budget exceeds remaining mandate cap
-ok 4 - Guardrail: blocks on expired mandate policy
-ok 5 - Guardrail: blocks on denied brand
-ok 6 - Hash Chain: creates deterministic SHA-256 hashes
-ok 7 - Hash Chain: validates sequential unbroken chain
-ok 8 - Hash Chain: detects tampering and invalid prevHash
-ok 9 - MerchantOrder: initializes in reserved state with stock hold
-ok 10 - PreDebitNotice: creates valid notice record with future execution threshold
-ok 11 - PlanCart: picks lowest price matching SKU based on packTokens
-ok 12 - PlanCart: asks clarification when budget is lower than any available SKU
-ok 13 - PlanCart: respects excludeSkus during stock race recovery
-ok 14 - Signature: verifies valid Razorpay Checkout HMAC signature
-ok 15 - Signature: rejects forged or mismatched Checkout signature
-ok 16 - Signature: verifies valid Razorpay webhook raw body signature
-1..16
-# tests 16, pass 16, fail 0
+ok 1 - applyConfirm: decrements mandate remainingPaise only on valid payment
+ok 2 - applyConfirm: ignores duplicate payment IDs and prevents double-debiting
+ok 3 - Guardrail: passes for compliant cart matching packTokens and budget
+ok 4 - Guardrail: catches real agentic failure (same-category substitution e.g. atta for basmati)
+ok 5 - Guardrail: blocks when budget exceeds remaining mandate cap
+ok 6 - Guardrail: blocks on expired mandate policy
+ok 7 - Guardrail: blocks on denied brand
+ok 8 - Hash Chain: creates deterministic SHA-256 hashes
+ok 9 - Hash Chain: validates sequential unbroken chain
+ok 10 - Hash Chain: detects tampering and invalid prevHash
+ok 11 - MerchantOrder: initializes in reserved state with stock hold
+ok 12 - PreDebitNotice: creates valid notice record with future execution threshold
+ok 13 - PlanCart: picks lowest price matching SKU based on packTokens
+ok 14 - PlanCart: asks clarification when budget is lower than any available SKU
+ok 15 - PlanCart: respects excludeSkus during stock race recovery
+ok 16 - Signature: verifies valid Razorpay Checkout HMAC signature
+ok 17 - Signature: rejects forged or mismatched Checkout signature
+ok 18 - Signature: verifies valid Razorpay webhook raw body signature
+1..18
+# tests 18, pass 18, fail 0
 ```
 
 ---
