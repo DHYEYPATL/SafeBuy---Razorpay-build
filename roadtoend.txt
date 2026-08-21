@@ -1,0 +1,991 @@
+Here is a second-pass critique **on top of** the Razorpay P0/P1 work. I am not restating Orders/webhooks/Fetch. Those stay P0. This is everything else that is still dummy, incomplete, or *conceptually wrong* if a Razorpay engineer reads the code.
+
+---
+
+## The actual product, in one sentence
+
+You do **not** yet have an AI buyer that pays. You have a **policy engine + countdown + hosted checkout** sitting on a toy kirana list. That can still win the track **if you name it honestly**. It loses if you call Checkout “agent-initiated debit” or the PIN “AFA” or localStorage “immutable.”
+
+---
+
+## 1. The hole in the story (bigger than code)
+
+**Mandate in your app ≠ mandate on a rail.**
+
+What you store is a **spending policy** (caps, categories). What NPCI/RBI/AP2 mean by mandate is a **pre-authorized instrument** (token / e-mandate) created with human AFA, later debited under rules.
+
+| Layer | What you have | What a reviewer hears |
+|--------|----------------|------------------------|
+| Create | PIN `1234` overlay | Fake AFA |
+| Bound | JS if-statements on a Zustand object | Real idea, weak enforcement |
+| Pay | Razorpay **Checkout** (human types card) | Customer-present payment |
+| Agent | Did not move money | Human did |
+
+So “AI buyer end-to-end” is **overclaimed**. After notify, a **person** finishes Checkout. That is closer to “agent prepares a gated cart, human pays.” That is a **valid, honest** demo. It is **not** agent-to-merchant autopay.
+
+**What to change (pick one, write it in README):**
+
+- **A (recommended for a weekend):** Keep Checkout. Pitch: *“Agent plans and gates; execution is hosted Checkout because test-mode silent debit is not a real Indian rail. Notify→window is the gate.”*  
+- **B (stronger if you have time):** After Checkout once, save Razorpay customer + token; later attempts charge the token **without** opening Checkout (still notify-window first). That is the only path that looks like an agent debit.
+
+Do not mix A and B in the pitch.
+
+---
+
+## 2. The “agent” is a keyword matcher + cheapest SKU
+
+[`parse-intent.ts`](src/lib/safebuy/parse-intent.ts) and [`plan.ts`](src/lib/safebuy/plan.ts) are the brain. They are dummy in ways judges will feel if they type anything other than the canned line.
+
+**Parser**
+
+- `"1 kg"` becomes **item count = 1**, not **1 kilogram**. `"buy 5 kg rice"` can mean five 5 kg bags (25 kg). Pack size and quantity are collapsed.  
+- `"under ₹150"` is regex; `"around 200"` / `"max 2 hundred"` miss.  
+- Category is synonym lists (`rice` → grains). No SKU-level intent (`basmati` is not a field on `StructuredIntent`).  
+- Grok parser exists and is **not on the Buy path**.
+
+**Planner**
+
+- Sort by price, take ≤2 lines, stop after one category.  
+- `"buy basmati"` works only because the **name string** contains `basmati`. Guardrail never checks that (next section).  
+- Empty cart = silent “no match.” No clarifying question (“1 kg pack or 5 kg bag?”).  
+- “Cheapest” is not “best.” For groceries that is OK; for a pitch called *agent* it looks cheap.
+
+**What to change (small, high leverage)**
+
+Extend `StructuredIntent`:
+
+```ts
+packTokens: string[]        // ["basmati"] 
+excludeTokens: string[]     // ["chocolate"]
+qty: number | null          // number of packs
+packSizeHint: string | null // "1kg"
+```
+
+Planner: filter names/brands by `packTokens`. If 0 or >3 candidates, **ask one question** instead of guessing. That single ask-back is more “agent” than another LLM call.
+
+Keep deterministic parse as fallback. Put Grok behind coerce → **same schema**.
+
+---
+
+## 3. Guardrail does not catch the real agentic failure
+
+We already said lab-inject chocolate. The **honest** failure is:
+
+> User said basmati. Agent picks atta. Both `grains`. Price under cap. **Guardrail passes.**
+
+[`guardrail.ts`](src/lib/safebuy/guardrail.ts) checks mandate + **categories/brands/qty/price**. It does **not** check name/SKU vs instruction tokens. Planner has a weak token check; the safety layer does not repeat it. If planner is wrong, safety agrees.
+
+Lab mismatch is **staged** (forced Cadbury). A reviewer who types `buy basmati` and then looks at guardrail source will see it cannot fail same-category substitution.
+
+**What to change**
+
+Guardrail step (deterministic):
+
+- `packTokens` must all appear in `name|brand|sku` (normalized).  
+- `excludeTokens` must appear in none.  
+- Optional: price within X% of remaining / instruction cap (you already discussed this).
+
+Then the chocolate SKU is unnecessary as a special case; it fails `packTokens=["basmati"]`.
+
+Keep the lab inject as a **demo button** that *uses the same guardrail*, not a fake cart the planner would never produce… or keep the inject but also show a natural miss.
+
+---
+
+## 4. Notify window is a countdown, not a control plane
+
+It is labelled synthetic — good. Still dummy as a **gate**:
+
+- 5s is too short to read SKU + amount + abort on mobile.  
+- Abort exists; there is no “hold / extend.”  
+- It does not create a durable **pre-debit record** (notice id, amount, merchant, deadline) that the execute step **must** reference. Execute just happens because a timer hit 0.
+
+**What to change**
+
+Make notify a **record**, not a CSS bar:
+
+```
+PreDebitNotice { id, attemptId, amountPaise, skus[], issuedAt, executeAfter, status }
+execute allowed iff notice.status==issued && now>=executeAfter && not aborted
+```
+
+Audit `notify.id` on the Order notes. Then the gate is data, not `setInterval`. Stretch 8–12s or require an explicit “Proceed after notice” **plus** min dwell (so it is not skippable in 50ms). Spec said notify then execute; a skippable overlay is weaker than a notice object.
+
+---
+
+## 5. PIN 1234 makes “human-authenticated mandate” look fake
+
+Worse than no AFA: a hardcoded PIN is a meme. Reviewers will screenshot it.
+
+**What to change**
+
+- Replace PIN with a single **“I authorise this spending policy”** checkbox + timestamp, labelled **simulated registration AFA**.  
+- Or collect a **₹1 Razorpay authorization** at mandate create (real AFA on the rail). Policy id stored next to that payment id. That is the best “mandate create = human on Razorpay” you can do in test mode without Autopay.
+
+Do not show a fake UPI PIN pad.
+
+---
+
+## 6. No merchant, no order, no purchase — only a payment
+
+Spec listed “catalog + inventory + order endpoints.” You have a **const array**. After pay:
+
+- no merchant order id  
+- stock not decremented (we flagged this)  
+- no address / slot (OK to omit)  
+- Razorpay payment is not tied to “Nila Kirana order #…” except notes  
+
+So you did **not** make the merchant transactable in the commerce sense. You made **a test payment with a grocery caption**.
+
+**What to change (half a day)**
+
+```
+MerchantOrder { id, skus, amount, status: reserved|paid|cancelled, razorpayOrderId }
+```
+
+Flow: guardrail pass → **reserve stock** → notify → Razorpay order notes.orderId=merchantOrderId → captured → `paid`. Fail/abort → `release`. This is real commerce, still synthetic catalog.
+
+Without this, Option B is a slide.
+
+---
+
+## 7. “Immutable audit” is a hash over a user-editable array
+
+SHA-256 chaining is correct. Persistence is `localStorage` via Zustand persist. Anyone can edit the JSON. Calling it immutable is **wrong**, not just incomplete.
+
+**What to change**
+
+- Server append-only log (even SQLite).  
+- Audit tab: **Verify chain** button (recompute hashes).  
+- Hash **canonical JSON of the money fields**, not chat text only.  
+- Do not persist `phase` inconsistently (today in-flight cart is **not** persisted; refresh mid-window desyncs audit vs UI). Either persist the whole attempt or persist none of the live state.
+
+---
+
+## 8. Client is the system of record
+
+Mandate remaining, stock, phase, “did we charge” all live in the browser. Deploy this with your Key Secret and **anyone** can call `createRazorpayOrder` (no auth on `createServerFn`). That is a **foot-gun**, not a demo flourish.
+
+**What to change**
+
+- Server holds remainingPaise / attempts (even a JSON file).  
+- Rate-limit order create.  
+- Optional demo lock (shared passphrase) so a public URL cannot drain test-mode noise.  
+- Remaining cap **never** trusted from the client on execute.
+
+This is independent of “full auth.”
+
+---
+
+## 9. Failure lab is a script, not the rail
+
+Soft decline / OOS / mismatch / 15k / revoke-in-window are **flags** that short-circuit. They do not use Razorpay decline cards, real 0 stock, or a real over-cap cart.
+
+Reviewer take: you **wrote the essay** about failures; you **mocked the exam**.
+
+**What to change**
+
+- Soft decline: Razorpay [test cards](https://razorpay.com/docs/payments/payments/test-card-details/) that fail (after P0 Fetch).  
+- AFA: actually put ₹15,001 in the cart (or a 5 kg × n lines), not `totalPaise = 1_500_000 + 10000` fake inflation.  
+- Revoke-in-window: keep as logic test; it is the one lab that is “real” in-process.  
+- Mismatch: natural instruction, not only inject.
+
+---
+
+## 10. AP2 / UAP is a paragraph, not a model
+
+Pitch mentions AP2 Intent / Cart / Payment. Code has one blob (`Mandate` + `StructuredIntent` + `ProposedCart`). Name-dropping without three objects is the “bespoke schema” miss from the first Razorpay review.
+
+**What to change (cheap, high signal)**
+
+Store three JSON documents per attempt, **labelled “modelled after AP2, not a protocol implementation”:**
+
+| Primitive | Your fields |
+|-----------|----------------|
+| Intent mandate | human policy: max, categories, expiry, merchant |
+| Cart mandate | locked SKU list + amounts after guardrail |
+| Payment mandate | razorpay `order_id`, amount, notice id |
+
+Show them on the USP/Audit tab. Do **not** claim UAP.
+
+---
+
+## 11. UX / demo issues that look like product bugs
+
+- **Execute effect** (`phase === "execute"` → `openLiveCheckout`) has **no once-guard**. Remount = second Checkout.  
+- **Default instruction is the only well-tested sentence.** Anything else is parser roulette. Add 5 golden utterances in Lab: rice, dal, over-budget, unknown SKU, deny-brand.  
+- **No ask-back** when plan is empty. Dead end.  
+- **Chat is a log**, not a conversation. Fine if you don’t claim conversational checkout.  
+- **Catalog branded Cadbury “to demo mismatch”** in the description field — too cute; reviewers read SKU copy.  
+- **Single mandate, no expiry, no merchant list.** Real mandates expire. Add `validUntil` (e.g. +7 days) and refuse execute after.
+
+---
+
+## 12. What I would *not* change
+
+- Option B over growth/upsell.  
+- Synthetic catalog (keep labelled).  
+- Compressed notify (keep labelled).  
+- Deterministic guardrail as the law, LLM as a proposer.  
+- Not building a generic “make any website agent-ready” framework.  
+- Not implementing real UAP crypto.
+
+Those were the right cuts.
+
+---
+
+## Priority if you only have a few days **after** P0 money path
+
+| Rank | Change | Why |
+|------|--------|-----|
+| 1 | Honest pitch: agent **gates**, Checkout **pays** (or token charge if you do B) | Stops a 30-second disqualify |
+| 2 | Guardrail on **name tokens**, not only category | Real agentic failure, not Cadbury theatre |
+| 3 | Merchant **order + reserve/release stock** | “Transactable” means an order exists |
+| 4 | Notice **object** binding execute | Gate is real |
+| 5 | Kill PIN 1234; checkbox or ₹1 auth | Respect |
+| 6 | Server remaining cap + rate limit | Don’t get your test key smoked |
+| 7 | AP2-shaped three JSON blobs | Matches “why now” without lying |
+| 8 | Ask-back on empty/ambiguous plan | Feels like an agent |
+| 9 | Verify-chain + don’t say immutable | Honesty |
+| 10 | Golden utterances + real decline card | Lab isn’t the only failure |
+
+---
+
+## How to talk about it in the 5-minute video
+
+“This is not a silent autopay agent — that rail does not exist yet. SafeBuy is the **missing safety layer**: structured policy, deterministic guardrail including SKU tokens, pre-debit notice as a record, then a **real** Razorpay test Order whose captured status is the only thing that spends the cap. Catalog and SMS are synthetic and labelled. Checkout is customer-present on purpose until tokenized debit is wired.”
+
+If that paragraph is true of the **code** on GitHub, you are in the top slice. If Checkout still confirms in the client handler and PIN is 1234 and guardrail cannot catch atta-for-basmati, the spec is stronger than the build — and they will read the spec last.**Triage:** not a build request. Straight status vs Track 01, then a 15-day plan.
+
+---
+
+## Where you actually stand
+
+You have a **correct problem** and a **thin demo**. You do **not** yet have a Track-01-winning submission.
+
+If you applied **today**, a Razorpay reviewer would likely say:
+
+> Problem taste: good. Honesty about silent debit: good. Build: Checkout overlay + regex planner + localStorage. Money path is not “agent on Razorpay test APIs.” Failure lab is scripted. Not internship-bar yet.
+
+That is the truth. 15 days with you + AI is **enough to close the gap** if you only build the missing **spine**, not a protocol thesis.
+
+---
+
+## Score vs the official bar
+
+| Track sentence | Today | 100% means |
+|----------------|--------|------------|
+| Merchant **transactable by an AI buyer end-to-end** | Agent proposes cart; **human** finishes Checkout | Cart reserved as a merchant order; payment is a **real Order**; status from **Fetch/webhook**; catalog stock moves |
+| **Razorpay test-mode APIs** | Checkout.js + sample key; Orders **skipped** without secret; Fetch **unused**; **no webhook** | Your keys; `POST /orders` always; confirm only on `captured` |
+| Explainable / bounded / gated | Canned strings; JS mandate; 5s overlay | Policy + notice **record** + guardrail **tokens**; every rupee in audit |
+| Audit trail | Hash math on **editable localStorage** | Append-only + verify button; payment_id unique |
+| One failure graceful | Lab **injects**, does not hit the rail | At least **one real** decline/mismatch path through Fetch |
+| Why now (UAP/AP2) | Copy on USP tab | Three JSON blobs (Intent / Cart / Payment) labelled “modelled after,” not claimed |
+
+**USP that is already real (keep):** structured mandate, deterministic guardrail *idea*, notify-then-execute *idea*, fail-closed on dismiss, Option B positioning, LIVE/SYNTHETIC labels.
+
+**What is still dummy or wrong:** PIN `1234`, sample Razorpay key, handler = paid, no merchant order, guardrail misses atta-for-basmati, planner = cheapest regex, audit not immutable, lab is theatre, “AI buyer” still needs a human at Checkout.
+
+---
+
+## The one sentence you must not get wrong
+
+**Silent autopay is not the product.**  
+**Gated, explained, Razorpay-confirmed spend is the product.**
+
+Pitch A (honest, shippable in 15 days):  
+*Agent plans + gates; human completes test Checkout **on an Order we created**; captured is the only spend.*
+
+Pitch B (stronger if Day 3–5 work):  
+*First pay saves a token; later buys charge the token after notify, no Checkout.*
+
+Do **not** claim B until it runs on **your** dashboard.
+
+---
+
+## 15-day plan (this is the whole remaining project)
+
+Work in this order. Do not skip. Do not start UAP, multi-merchant, or campaign bots.
+
+### Days 1–2 — Money is real or you have nothing
+
+1. Your `rzp_test` **Key ID + Secret**. Delete sample key. If secret missing → app refuses to pay.  
+2. **Always** `POST /v1/orders` (receipt = attempt id, notes = correlation). No Order → no Checkout.  
+3. Checkout **only with `order_id`**.  
+4. Handler does **not** decrement cap. Phase = `pending`.  
+5. `GET /v1/payments/:id` (function already exists — **call it**). Cap moves only on `captured`.  
+6. HMAC verify `order_id|payment_id` vs `razorpay_signature`.  
+7. Idempotent `applyConfirm(payment_id)` — one function, one spend.
+
+**Done when:** dashboard shows **your** Order, then Payment, and audit says `source=fetch`.
+
+### Days 3–4 — Webhook + fail-closed for real
+
+8. `POST /api/razorpay/webhook`, HMAC with webhook secret, events `payment.captured` / `payment.failed`.  
+9. Tunnel for demo; poll as fallback (say 8–15s is demo, not UPI SLA).  
+10. Late capture after dismiss: reconcile, **never double-spend**.  
+11. Soft decline: Fetch first, **≤1 retry**, then stop. Use a **test decline card**, not only a lab flag.
+
+### Days 5–6 — Merchant is transactable (Option B)
+
+12. `MerchantOrder`: reserve stock → notify → Order notes include `merchantOrderId` → captured → paid; abort → release.  
+13. Catalog stock actually drops.  
+14. Pre-debit **notice object** `{id, amount, skus, executeAfter}` — execute illegal without it.
+
+Without 12–14 you have a payment demo, not a buyable merchant.
+
+### Days 7–8 — Agent that can fail for the right reason
+
+15. Intent schema: `packTokens[]`, `excludeTokens[]`, pack vs qty.  
+16. Guardrail: tokens must match **name/brand/sku** (atta ≠ basmati).  
+17. Empty/ambiguous plan → **one ask-back**, not a dead chat.  
+18. Semantic mismatch → Confirm / new instruction (not only `stopped`).  
+19. Kill PIN 1234 → “I authorise this policy” + timestamp, labelled simulated AFA. Optional: ₹1 auth payment at create.
+
+### Days 9–10 — Honesty layer (judges read this first)
+
+20. AP2-shaped three JSON views per attempt: Intent / Cart / Payment. Caption: *modelled after, not implemented*.  
+21. README: LIVE vs SYNTHETIC, silent-debit gap, **what broke**, test card, tunnel.  
+22. Audit **Verify chain**; stop calling localStorage immutable.  
+23. Rate-limit Order create if the URL is public.
+
+### Days 11–12 — Proof
+
+24. Unit tests: guardrail tokens, hash tamper, duplicate `payment_id`.  
+25. Five golden lines: rice under 150; unknown SKU; over cap; deny brand; basmati vs atta.  
+26. Video: 90s happy path (dashboard in frame) + 90s mismatch + 60s “what we refused to fake.”
+
+### Days 13–15 — Freeze and polish
+
+27. Optional only if 1–26 are green: token charge (Pitch B) **or** one in-mandate upsell after confirm (still through guardrail).  
+28. Do **not** start NPCI UAP, ACP, website-to-agent framework, campaign orchestrator.
+
+---
+
+## What “100% of *our* idea” is (and is not)
+
+**100% of the idea you finalised** = Option B + real test Orders + notify-gate + deterministic guardrail + audit + one real failure + honest synthetic SMS/AFA.
+
+**100% of the track’s entire menu** (growth + upsell + campaigns + conversational checkout + UAP) is a trap. Reviewers hired people who **finished one slice**. Growth is a bonus line in the last 48h, not the spine.
+
+---
+
+## Resources you need (you said you have them)
+
+| Have | Need |
+|------|------|
+| This repo | Copy to GitHub as the public submission |
+| Time | 15 days, ~3–5h/day on the list above, not new architecture docs |
+| AI | Use it to implement **tickets 1–26**, not to invent services 11–20 |
+| Razorpay | Test dashboard, webhook secret, two test cards (success + fail) |
+| Video | Phone + dashboard tab |
+
+If you lack **your own** test keys on day 1, you cannot hit 100%. Everything else is downstream.
+
+---
+
+## Brutal forecast
+
+| If you ship | Internship signal |
+|-------------|-------------------|
+| Current preview + a PDF spec | Weak — they read “what broke” and the repo |
+| Days 1–4 only (real Order + Fetch) | Competitive **demo** |
+| Days 1–12 (order + merchant + token guardrail + README + video) | **Strong** Option B; this is the aim |
+| Days 1–12 + token debit or tiny upsell | Outstanding |
+| UAP/crypto theatre instead of Fetch | You lose to a thinner honest repo |
+
+---
+
+## Direction in one line
+
+**Stop designing. Make Razorpay the source of truth for money, the merchant order the source of truth for “bought,” and the guardrail the source of truth for “allowed.”** Everything else you already wrote is the story around those three.
+
+Start tomorrow with keys + Orders + `applyConfirm`. If that is not on video by day 4, you are still in slide-ware.Treat this as **the only remaining spec**. One document, three chapters you can print separately: **Days 1–5 money**, **Days 6–10 product**, **Days 11–15 proof**. Do not add new architecture. Implement this list in order.
+
+**North star:** Option B — merchant transactable by an AI buyer on **your** Razorpay test APIs. Silent debit is **not** the claim. Notify → Order → `captured` is the claim.
+
+**Pitch line you are building toward:**  
+*Agent plans and gates. A notice record is required before money. The only thing that spends the cap is Razorpay `captured` on an Order we created. Catalog/SMS/AFA registration are synthetic and labelled.*
+
+---
+
+# Chapter 0 — Setup (Day 0, evening, 2–3h)
+
+## 0.1 Repo
+
+- Copy the current SafeBuy app to a **public GitHub** repo (form requires it).
+- Branch `main` = what you demo. Branch `wip/*` for experiments.
+- `.gitignore`: `.env`, `.env.local`, `node_modules`.
+- `.env.example` (empty values only):
+
+```
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
+```
+
+- Delete `rzp_test_1DP5mmOlF5G5ag` from source. No fallback sample key.
+- README stub: title, Option B, LIVE vs SYNTHETIC table (fill as you go).
+
+## 0.2 Razorpay dashboard (test mode)
+
+Create/open **test** account:
+
+1. API Keys → Key Id + Secret → into env (never commit).
+2. Webhooks → you’ll paste a tunnel URL on Day 4.
+3. Note test cards: success `4111 1111 1111 1111`; keep Razorpay’s **failure** test card from their docs for Day 5.
+4. Confirm you can create a **manual** test payment once (dashboard sanity).
+
+## 0.3 Freeze the USP (do not rewrite)
+
+Do **not** redesign: mandate schema idea, guardrail as law, notify-then-execute, fail-closed, Option B, LIVE/SYNTHETIC badges.
+
+You **will** change: money confirmation, merchant order, token matching, PIN, persistence of remaining cap.
+
+## 0.4 Module map (target, not all Day 1)
+
+```
+src/lib/safebuy/
+  types.ts              extend: notice, merchant order, AP2 views, tokens
+  catalog.ts            stock becomes mutable via store
+  parse-intent.ts       packTokens, excludeTokens, pack vs qty
+  plan.ts               ask-back, next-best, token filter
+  guardrail.ts          token match; needsHumanConfirm wired
+  hash.ts               keep; add verifyChain()
+  store.ts              orchestrator; remainingPaise only via applyConfirm
+  razorpay-api.ts       orders, fetch, signature; no sample key
+  razorpay-confirm.ts   NEW applyConfirm (single mutator)
+  checkout.ts           order_id required
+  notice.ts             NEW pre-debit notice record
+  merchant-order.ts     NEW reserve / release / paid
+
+src/routes/api/razorpay/webhook.ts   NEW Day 4
+```
+
+**Invariant:** `applyConfirm` is the **only** function that subtracts `remainingPaise` or marks an attempt `confirmed`.
+
+---
+
+# Chapter 1 — Days 1–5: Money is real
+
+If this chapter slips, stop everything else.
+
+---
+
+## Day 1 — Keys, Order always, Checkout only with `order_id`
+
+**Goal:** Creating a buy produces a row in **your** Razorpay **Orders** before any card UI.
+
+### Work
+
+1. `getRazorpayPublicKey` / `createRazorpayOrder`:
+   - If `!KEY_ID || !SECRET` → `{ ok: false, error: "credentials missing" }`.
+   - UI: blocking banner, **do not** open Checkout.
+
+2. `createRazorpayOrder` body:
+
+```
+amount: cart.totalPaise
+currency: INR
+receipt: attempt.id.slice(0, 40)
+payment_capture: 1
+notes: { correlationId, mandateId, attemptId, merchantId }
+headers: Authorization Basic, Idempotency-Key: attempt.id
+```
+
+3. `openRazorpayCheckout`: `order_id` **required**. If null → `failClosed("no_order")`.
+
+4. `startExecute` pipeline:
+
+```
+window elapsed
+→ createRazorpayOrder
+→ persist attempt.razorpayOrderId
+→ audit razorpay.order_created layer=live
+→ phase=execute
+→ Checkout { key, order_id, amount }
+```
+
+5. Guard: `checkoutOpenedForAttemptId` so remount does not open twice.
+
+### Acceptance
+
+- Dashboard → Orders → new order, amount matches cart paise.
+- Audit: `razorpay.order_created` with real `order_id`.
+- No secret in git (`git grep rzp_`).
+
+---
+
+## Day 2 — `pending` + Fetch + `applyConfirm`
+
+**Goal:** Handler is **not** paid. `captured` is paid.
+
+### Data
+
+On `PurchaseAttempt` add:
+
+```
+razorpaySignature: string | null
+razorpayStatus: none | created | pending | captured | failed | unknown
+confirmSource: none | fetch | webhook
+chargeAttempts: number
+```
+
+### `applyConfirm({ attemptId, paymentId, orderId, source, amountPaise })`
+
+Preconditions (all or reject):
+
+- attempt exists  
+- not already confirmed for this `paymentId` (idempotent map)  
+- `amountPaise === cart.totalPaise`  
+- `orderId === attempt.razorpayOrderId`  
+- mandate remaining ≥ amount **or** in-flight revoke path (Day 8)
+
+Then:
+
+- remainingPaise -= , spentPaise +=  
+- phase `confirmed`  
+- audit `razorpay.confirmed` { source, paymentId, remaining }
+
+### Handler (Checkout)
+
+```
+onSuccess(order_id, payment_id, signature):
+  audit razorpay.handler_received   // NOT confirmed
+  phase = pending
+  store ids
+  startReconcile(attemptId, paymentId)
+onDismiss:
+  failClosed("checkout_dismissed")
+  do not assume unpaid (Day 4 late webhook)
+```
+
+### `startReconcile`
+
+```
+for i in 0..5, wait 2s (disclose: demo poll, not UPI SLA):
+  GET /v1/payments/:id     // existing fetchRazorpayPayment — CALL IT
+  captured | authorized → applyConfirm(source=fetch)
+  failed | cancelled    → failClosed, no retry yet (retry Day 5)
+timeout → failClosed("poll_timeout"); flag wait_webhook=true
+```
+
+### HMAC Checkout signature (server)
+
+```
+message = `${orderId}|${paymentId}`
+hmac_sha256(message, KEY_SECRET) hex vs razorpay_signature
+timingSafeEqual
+fail → failClosed("bad_signature"); do not Fetch-as-success
+```
+
+### Acceptance
+
+- Network: GET payment after handler.  
+- Mandate remaining changes **only after** `captured`.  
+- Tampered payment_id does not confirm.
+
+---
+
+## Day 3 — Idempotency + unique payment
+
+**Goal:** Double click / double handler cannot double-spend.
+
+1. In-memory or SQLite: `confirmedPaymentIds`, `attemptId → orderId`.  
+2. Second `POST /orders` same `Idempotency-Key` / same attempt → reuse order_id, no second order.  
+3. `applyConfirm` no-op + audit `razorpay.duplicate_ignored` if payment_id seen.  
+4. UI: disable Send while `pending` | `window` | `execute`.
+
+### Acceptance
+
+- Two rapid confirms → remaining drops **once**.  
+- Dashboard: one order per attempt.
+
+---
+
+## Day 4 — Webhook
+
+**Goal:** Close the tab after pay; still confirm.
+
+### Route
+
+`POST /api/razorpay/webhook`
+
+```
+raw body (do not JSON.stringify again)
+expected = HMAC_SHA256(raw, WEBHOOK_SECRET)
+header X-Razorpay-Signature
+timingSafeEqual else 400
+
+event:
+  payment.captured / order.paid → applyConfirm(source=webhook)
+  payment.failed → if not confirmed, failClosed
+always 200 after durable write (or 200 + ignore dup)
+```
+
+Webhook secret ≠ key secret. Do not mix.
+
+### Tunnel (your machine)
+
+- Public HTTPS → that route.  
+- Dashboard webhook URL + those three events.  
+- README 8-line runbook.
+
+### Race with poll
+
+Same `applyConfirm`. First writer wins; second = duplicate_ignored.
+
+### Late capture after fail-closed
+
+If phase `failed` and later `captured`:
+
+- `applyConfirm`  
+- audit `reconciled_after_fail_closed`  
+- still once per payment_id  
+
+### Acceptance
+
+- Pay, close tab, webhook or poll lands `confirmed`.  
+- Audit shows `source`.
+
+---
+
+## Day 5 — Soft decline for real + fail-closed story
+
+**Goal:** One **rail** failure, not a lab lie.
+
+1. Lab flag may **still exist** for demo, but happy “decline” path: Razorpay **failure test card**.  
+2. Pipeline:
+
+```
+Fetch status == failed
+audit payment.soft_decline { paymentId, retry: 0 }
+if chargeAttempts == 0:
+  chargeAttempts++
+  new Order OR documented reuse
+  Checkout again
+  pending → Fetch
+if still failed:
+  stop, user message, no third charge
+NEVER retry if status is created|authorized|unknown
+```
+
+3. UI copy: “Fetched Razorpay status before any retry.” Must be **true** (audit has Fetch row).
+
+### Day 1–5 freeze
+
+Record 60s video: mandate (skip polish) → rice → notice → **dashboard Order** → test card → audit `confirmed` + `source`.
+
+If this video does not exist, **do not start Chapter 2**.
+
+---
+
+# Chapter 2 — Days 6–10: Merchant + agent + honesty
+
+---
+
+## Day 6 — Merchant order + stock
+
+**Goal:** “Transactable” = an order exists, not only a Razorpay payment.
+
+### Model
+
+```
+MerchantOrder {
+  id, merchantId, skus[], qty[], amountPaise,
+  status: reserved | paid | cancelled,
+  attemptId, razorpayOrderId,
+  reservedAt, paidAt, cancelledAt
+}
+```
+
+### Pipeline insert
+
+```
+guardrail pass
+→ reserve stock (fail if insufficient)     // replaces notify-first
+→ create MerchantOrder reserved
+→ THEN notify record (Day 7)
+→ THEN Razorpay Order notes.merchantOrderId = id
+→ captured → order.paid, stock already reserved (commit)
+→ fail/abort → release stock, order.cancelled
+```
+
+Stock lives in store (copy of catalog counts), not a const. Reset Demo restores.
+
+### Acceptance
+
+- Two rice buys: SKU stock 18 → 17 → 16 in UI.  
+- Abort in window: stock restored, no Razorpay capture.
+
+---
+
+## Day 7 — Notice as a record (gate is data)
+
+**Goal:** Timer is not the gate. A **notice** is.
+
+```
+PreDebitNotice {
+  id, attemptId, merchantOrderId,
+  amountPaise, skus[],
+  issuedAt, executeAfter,   // now + 8–12s, labelled compressed vs 24h
+  status: issued | aborted | consumed
+}
+```
+
+Execute **illegal** unless:
+
+```
+notice.status == issued
+now >= executeAfter
+not aborted
+attempt still pending execute
+```
+
+Put `notice.id` in Razorpay Order notes.
+
+UI: countdown + **Abort**. Optional “Proceed” enabled only after `executeAfter` (cannot skip in 50ms).
+
+Audit `notify.pre_debit` layer=`synthetic` with notice id.
+
+### Acceptance
+
+- DevTools: call execute without notice → rejected, audited.  
+- Label visible: compressed demo of RBI notify-then-execute.
+
+---
+
+## Day 8 — Revoke, AFA ₹15k, kill PIN 1234
+
+### Revoke (already half-done)
+
+- Future attempts blocked.  
+- If phase is `window`/`execute`/`pending`: in-flight **may complete**; audit `completed_under_previously_valid_mandate` with timestamps.  
+- Do **not** try to void a Razorpay payment from the client.
+
+### AFA threshold
+
+- If `totalPaise > 1_500_000`: `needs_confirm` **before** reserve/notify.  
+- Do **not** fake-inflate totals in lab only. Add a real expensive SKU or qty that exceeds ₹15k **or** lab that actually builds such a cart.  
+- Confirm → continue notify. Cancel → stop.
+
+### Kill PIN
+
+- Replace with checkbox: “I authorise this spending policy (simulated registration AFA).”  
+- Store `afaSimulatedAt`, `afaMethod: "simulated_consent"`.  
+- Optional stretch (if Day 5 video exists): ₹1 Razorpay auth at create; store that `payment_id` on the mandate.
+
+### Mandate extras (small)
+
+- `validUntil` = now + 7 days; execute refused after.  
+- Still one merchant (`nila-kirana`).
+
+---
+
+## Day 9 — Agent brain: tokens, ask-back, real mismatch
+
+**This is the agentic-commerce differentiator**, not more microservices.
+
+### Extend `StructuredIntent`
+
+```
+packTokens: string[]      // ["basmati"]
+excludeTokens: string[]
+qtyPacks: number | null   // number of packs, not kg parsed as count
+packSizeHint: string | null
+```
+
+Parser: split “5 kg” as size hint vs “2 packs”. Keep deterministic. Wire Grok → `coerceIntent` **same schema**, timeout fallback.
+
+### Planner
+
+- Filter catalog by mandate **and** `packTokens` in `name|brand|sku`.  
+- 0 candidates → **ask-back** one question, phase idle-ish, no notify.  
+- >3 candidates → ask “which pack?”  
+- Next-best on OOS: exclude SKU, re-plan, **re-guardrail**, else ask-back.
+
+### Guardrail (must match planner)
+
+- `packTokens` all substring-match line name/brand/sku (normalize).  
+- `excludeTokens` none match.  
+- Same-category atta vs basmati **fails**.  
+- `needsHumanConfirm` for instruction mismatch; mandate violations stay hard deny.  
+- Wire Confirm modal for `needsHumanConfirm` (today only AFA uses it).
+
+### Lab
+
+- Mismatch button should produce a cart that **fails the same guardrail** (chocolate **or** atta-for-basmati). Prefer natural utterance in the video: “buy basmati” + forced atta.
+
+### Acceptance
+
+- `buy basmati` cannot pass atta.  
+- `buy chocolate` with grains-only mandate hard-stops.  
+- Empty plan asks a question.
+
+---
+
+## Day 10 — AP2-shaped documents + audit honesty
+
+### Three JSON blobs per attempt (UI + audit payload)
+
+Label: **“Modelled after AP2 primitives; not a protocol implementation.”**
+
+| Name | Fields |
+|------|--------|
+| Intent mandate | maxAmount, categories, brands, tokens, validUntil, merchantId, human auth ts |
+| Cart mandate | locked lines, amounts, merchantOrderId, guardrail result |
+| Payment mandate | razorpay order_id, amount, notice.id, payment_id, status, source |
+
+Show on Audit or USP tab.
+
+### Audit
+
+- `verifyChain()` button: recompute hashes; red if tampered.  
+- Copy: “hash-chained in this browser store; not a legal WORM log.”  
+- Optional: SQLite/Postgres append-only if you already have DB; **don’t** spend Day 10 migrating if verify-chain works.
+
+### Server remaining cap (if you can)
+
+Even a server JSON file: remainingPaise not trusted from client on `applyConfirm`. If 15-day crunch, document as known risk and rate-limit `createRazorpayOrder`.
+
+---
+
+# Chapter 3 — Days 11–15: Proof, form, freeze
+
+---
+
+## Day 11 — Tests + golden utterances
+
+```
+guardrail.test.ts   tokens, over cap, deny brand, AFA, mismatch confirm
+hash.test.ts        chain ok; mutate payload breaks
+applyConfirm.test.ts duplicate payment_id; amount mismatch
+plan.test.ts        basmati vs atta; empty → no lines
+```
+
+Golden UI scripts (Lab or README):
+
+1. Buy 1 kg basmati under ₹150 → India Gate 1kg.  
+2. Unknown SKU → ask-back.  
+3. Over remaining cap → block.  
+4. Deny brand.  
+5. Decline card → Fetch → stop or one retry.
+
+---
+
+## Day 12 — README + “what broke” (they read this first)
+
+Must include:
+
+- Option B; upsell not the pitch.  
+- LIVE vs SYNTHETIC table (money LIVE; catalog/SMS/consent AFA SYNTHETIC; 8–12s window compressed).  
+- Env vars, test cards, webhook tunnel.  
+- Architecture sequence (one mermaid).  
+- **What broke:** sample key, handler-as-paid, PIN 1234, category-only guardrail, localStorage “immutable” — and what you did.  
+- Regulatory paragraph: no Indian rail silent debit; notify→execute is the answer; UAP/AP2 exist to standardise this.  
+- Non-goals.
+
+---
+
+## Day 13 — 5-minute video (unlisted)
+
+Script:
+
+| Time | Picture | Say |
+|------|---------|-----|
+| 0:00–0:40 | Track text / USP | Option B. No silent debit. Notify then Razorpay. |
+| 0:40–2:10 | Full buy | Mandate consent → instruction → cart → notice → **dashboard Order** → test card → audit captured |
+| 2:10–3:20 | Mismatch | basmati vs atta or chocolate; guardrail block / confirm |
+| 3:20–4:10 | Decline or dismiss | Fetch / fail-closed / no double charge |
+| 4:10–5:00 | Audit + three JSON blobs | Explainable, bounded, gated. What we refused to fake. |
+
+Show **your** Razorpay dashboard in frame. No slide-only money.
+
+---
+
+## Day 14 — Form packet + freeze
+
+Form (12 answers). Draft now:
+
+- Track: 01  
+- Project name: SafeBuy Agent  
+- What it solves: merchants aren’t agent-transactable; no silent debit; we gate + real test Orders + audit  
+- Repo: public  
+- Video: unlisted link  
+- **What broke:** 8–12 honest sentences (handler vs captured, sample key, token guardrail, webhook tunnel). This field is scored first.
+
+Freeze `main`. Tag `v1.0-buildathon`. No new features after noon Day 14.
+
+Optional **only if** 1–13 are green: (a) saved-card token second buy without Checkout, **or** (b) one in-mandate upsell line after confirm, still through guardrail. If either is flaky, **cut it**.
+
+---
+
+## Day 15 — Dry run as the panel
+
+Checklist (you play reviewer):
+
+- [ ] Clone fresh, env, one buy, Order in dashboard  
+- [ ] Remaining cap matches dashboard captures  
+- [ ] Mismatch cannot sneak same-category SKU  
+- [ ] Notice abort does not charge  
+- [ ] Duplicate webhook does not double spend  
+- [ ] README LIVE/SYNTHETIC matches UI badges  
+- [ ] Video ≤ 5:30  
+- [ ] No sample key, no PIN 1234, no “immutable” lie  
+- [ ] You can say in 20s: “Checkout is customer-present on purpose; captured is source of truth; UAP is the gap.”
+
+Submit before the 5 Sep close. Do not “just add UAP.”
+
+---
+
+# Daily rhythm (you + AI)
+
+| Block | You | AI |
+|-------|-----|-----|
+| 45 min | Dashboard / video / copy | — |
+| 2–3 h | Spec’d tickets **in order** | Implement one ticket, tests, no new folders |
+| 30 min | Acceptance of that day | Fix only that ticket |
+
+Prompt for AI each day:
+
+```
+Implement ONLY Day N from the SafeBuy 15-day playbook.
+Do not add services. Do not mock Razorpay captured.
+applyConfirm remains the only remainingPaise mutator.
+Files: [list]. Acceptance: [day’s Done when].
+```
+
+---
+
+# What you will not do in 15 days
+
+- NPCI UAP / ACP / x402 crypto  
+- Multi-merchant website converter  
+- Campaign orchestrator as the pitch  
+- Production 24h SMS  
+- Claiming agent pays with zero human at Checkout unless token path is **recorded working**
+
+---
+
+# Internship bar (how they score you)
+
+They said they read **what broke** first, then: problem taste, build quality, AI judgment (where you **didn’t** use a model), failure recovery.
+
+| Signal | How you produce it |
+|--------|-------------------|
+| Problem taste | Silent debit named as the gap; notify-execute |
+| Build quality | Order + captured + merchant order + tests |
+| AI judgment | Deterministic guardrail; LLM coerced; no LLM on money |
+| Failure recovery | Real decline + mismatch + fail-closed reconcile |
+
+That is the award path. Not 8 microservices.
+
+---
+
+# If you only remember four sentences
+
+1. Day 1–5: **your** Order, Fetch, `applyConfirm`, webhook.  
+2. Day 6–7: **merchant order + notice record**.  
+3. Day 9: **token guardrail** (atta ≠ basmati).  
+4. Day 12–13: README “what broke” + video with **dashboard in frame**.
+
+Start Day 1 tonight: keys in env, delete sample key, first Order in the dashboard. Everything else is commentary until that exists.
