@@ -692,13 +692,19 @@ function LabPanel() {
       <p className="mt-1 text-sm text-muted">Inject an edge case scenario, then send a purchase instruction in the Buy panel.</p>
 
       <div className="mt-4 rounded-[var(--radius-md)] border border-border bg-elevated/50 p-3">
-        <p className="text-xs font-medium uppercase tracking-wider text-subtle">Razorpay Test Cards</p>
+        <p className="text-xs font-medium uppercase tracking-wider text-subtle">Razorpay Test Credentials (India Sandbox)</p>
         <div className="mt-2 flex flex-wrap gap-2 text-xs font-mono">
           <span className="rounded bg-surface px-2.5 py-1 text-emerald-400 border border-emerald-500/30">
-            Success: 4111 1111 1111 1111 (Exp: 12/30, CVV: 123)
+            UPI: success@razorpay (Instant)
+          </span>
+          <span className="rounded bg-surface px-2.5 py-1 text-emerald-400 border border-emerald-500/30">
+            RuPay Domestic: 5085 0500 0000 0001 (12/30, 123)
+          </span>
+          <span className="rounded bg-surface px-2.5 py-1 text-emerald-400 border border-emerald-500/30">
+            Visa / MC: 5123 4567 8901 2346 (12/30, 123)
           </span>
           <span className="rounded bg-surface px-2.5 py-1 text-amber-400 border border-amber-500/30">
-            Soft Decline: 4000 0000 0000 1003 (Exp: 12/30, CVV: 123)
+            Soft Decline: 4000 0000 0000 1003
           </span>
         </div>
       </div>
