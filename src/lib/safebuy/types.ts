@@ -1,5 +1,5 @@
 export const AFA_EXEMPT_PAISE = 1_500_000; // ₹15,000
-export const DEMO_NOTIFY_WINDOW_MS = 5_000;
+export const DEMO_NOTIFY_WINDOW_MS = 8_000; // 8 seconds for readable dwell
 export const MERCHANT_ID = "nila-kirana";
 export const MERCHANT_NAME = "Nila Kirana";
 
@@ -18,11 +18,12 @@ export type Category = (typeof CATEGORIES)[number];
 
 export type LayerKind = "live" | "synthetic";
 
-export type MandateStatus = "active" | "revoked";
+export type MandateStatus = "active" | "revoked" | "expired";
 
 export type AgentPhase =
   | "idle"
   | "planning"
+  | "ask_back"
   | "guardrail"
   | "notify"
   | "window"
@@ -40,6 +41,7 @@ export type FailureKind =
   | "afa_threshold"
   | "mandate_exceeded"
   | "mandate_revoked"
+  | "mandate_expired"
   | "fail_closed"
   | "none";
 
@@ -58,6 +60,10 @@ export interface StructuredIntent {
   brandsDeny: string[];
   maxQuantityPerItem: number | null;
   priceCeilingPerItemPaise: number | null;
+  packTokens: string[];        // Specific search terms e.g. ["basmati"]
+  excludeTokens: string[];     // Denied terms e.g. ["atta", "chocolate"]
+  qty: number | null;          // Number of packs requested
+  packSizeHint: string | null; // e.g. "1kg", "5kg", "500g"
   queryText: string;
 }
 
@@ -74,9 +80,10 @@ export interface Mandate {
   maxQuantityPerItem: number;
   priceCeilingPerItemPaise: number;
   createdAt: string;
+  validUntil: string;
   revokedAt: string | null;
-  afaSimulatedAt: string;
-  afaMethod: "simulated_upi_pin";
+  authorizedBy: string;
+  authorizationMethod: "simulated_registration_auth";
 }
 
 export interface CatalogItem {
@@ -106,6 +113,34 @@ export interface ProposedCart {
   merchantId: string;
   merchantName: string;
   reason: string;
+  needsClarification?: boolean;
+  clarificationPrompt?: string;
+}
+
+export interface PreDebitNotice {
+  id: string;
+  attemptId: string;
+  amountPaise: number;
+  skus: string[];
+  merchantId: string;
+  merchantName: string;
+  issuedAt: string;
+  executeAfter: string;
+  dwellMs: number;
+  status: "issued" | "cancelled" | "executed" | "expired";
+}
+
+export interface MerchantOrder {
+  id: string;
+  merchantId: string;
+  merchantName: string;
+  attemptId: string;
+  lines: CartLine[];
+  totalPaise: number;
+  status: "reserved" | "paid" | "released" | "cancelled";
+  reservedAt: string;
+  paidAt: string | null;
+  razorpayOrderId: string | null;
 }
 
 export interface GuardrailResult {
@@ -138,6 +173,8 @@ export interface PurchaseAttempt {
   intent: StructuredIntent;
   phase: AgentPhase;
   failure: FailureKind;
+  noticeId: string | null;
+  merchantOrderId: string | null;
   razorpayOrderId: string | null;
   razorpayPaymentId: string | null;
   razorpaySignature: string | null;
@@ -148,4 +185,37 @@ export interface PurchaseAttempt {
   executeAt: string | null;
   confirmedAt: string | null;
   createdAt: string;
+}
+
+// AP2 Primitive Data Models
+export interface AP2IntentMandate {
+  version: "ap2.intent_mandate.v1";
+  mandateId: string;
+  merchantId: string;
+  maxSpendPaise: number;
+  allowedCategories: Category[];
+  deniedBrands: string[];
+  validUntil: string;
+  authorizedBy: string;
+  authorizedAt: string;
+}
+
+export interface AP2CartMandate {
+  version: "ap2.cart_mandate.v1";
+  attemptId: string;
+  merchantOrderId: string;
+  lockedSkus: Array<{ sku: string; qty: number; unitPricePaise: number }>;
+  totalPaise: number;
+  guardrailProof: { passedAt: string; code: string };
+}
+
+export interface AP2PaymentMandate {
+  version: "ap2.payment_mandate.v1";
+  attemptId: string;
+  noticeId: string;
+  razorpayOrderId: string | null;
+  razorpayPaymentId: string | null;
+  amountPaise: number;
+  reconciliationStatus: string;
+  confirmedAt: string | null;
 }
