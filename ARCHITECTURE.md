@@ -1,87 +1,80 @@
 # SafeBuy System Architecture
 
 ## Overview
-SafeBuy establishes a safe execution container around an autonomous AI agent to make merchant stores transactable under Indian financial regulations.
+SafeBuy establishes a deterministic governance and safety layer around an autonomous AI agent to make merchant stores safely transactable under Indian payment regulations.
 
 ---
 
-## 1. End-to-End Execution Sequence
+## 1. AP2 Primitives & Merchant Lifecycle
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Human as User / Cardholder
     participant UI as SafeBuy Web UI
-    participant Agent as SafeBuy Orchestrator (Zustand Store)
+    participant Agent as SafeBuy Orchestrator (Zustand)
     participant Guard as Deterministic Guardrail
-    participant RZP_API as Razorpay API (Server Fn)
+    participant Merchant as Merchant Order System
+    participant RZP_API as Razorpay API (Server)
     participant RZP_CO as Razorpay Checkout.js
     participant Audit as Hash-Chained Audit Store
 
-    Note over Human,UI: Phase 1: Setup & Intent
-    Human->>UI: Create Mandate (Spend cap, categories, simulated AFA PIN)
+    Note over Human,UI: Phase 1: Policy Mandate Creation
+    Human->>UI: Establish Spending Policy (Cap, categories, validity, auth)
     UI->>Agent: createMandate()
-    Agent->>Audit: appendAudit(mandate.created) [LIVE]
+    Agent->>Audit: appendAudit(mandate.created) [AP2 Intent Mandate]
+
+    Note over Human,Agent: Phase 2: Natural Language Instruction & Planning
     Human->>UI: "Buy 1 kg basmati under ₹150"
     UI->>Agent: runInstruction(text)
-    Agent->>Agent: parseIntent(text) [LIVE / Grok Coercion]
-    Agent->>Audit: appendAudit(intent.parsed) [LIVE]
-
-    Note over Agent,Guard: Phase 2: Planning & Safety Gate
+    Agent->>Agent: parseIntent(text) -> { packTokens: ["basmati"], budget: 15000 }
     Agent->>Agent: planCart(mandate, intent, liveStock)
+
+    Note over Agent,Guard: Phase 3: Token-Level Guardrail Gate
     Agent->>Guard: runGuardrail(cart, mandate, intent)
-    alt Guardrail Passes
+    alt Pack Tokens & Schema Pass
         Guard-->>Agent: { ok: true, code: "pass" }
-        Agent->>Audit: appendAudit(guardrail.pass) [LIVE]
-    else Semantic Mismatch / AFA > 15k
+    else Substitution Mismatch (e.g. Atta for Basmati)
         Guard-->>Agent: { ok: false, needsHumanConfirm: true }
-        Agent->>UI: Display Human Confirmation Modal
-        Human->>UI: Click "Confirm & Proceed"
-        UI->>Agent: confirmSemanticOverride()
-        Agent->>Audit: appendAudit(semantic.human_override) [LIVE]
+        Agent->>UI: Show Human Override Confirmation Modal
     end
 
-    Note over Agent,UI: Phase 3: Notify-then-Execute Gate
-    Agent->>UI: 5s Pre-debit Countdown Window [SYNTHETIC notice]
-    Agent->>Audit: appendAudit(notify.pre_debit) [SYNTHETIC]
-    Note over Agent: Window elapses without user abort
+    Note over Agent,Merchant: Phase 4: Stock Hold & Pre-Debit Notice
+    Agent->>Merchant: createMerchantOrder(lines, "reserved") [AP2 Cart Mandate]
+    Agent->>Agent: issuePreDebitNotice(dwellMs: 8000)
+    Agent->>UI: Display Dwell Countdown (+5s Hold / Proceed Now)
 
-    Note over Agent,RZP_CO: Phase 4: Order Creation & Checkout
-    Agent->>RZP_API: createRazorpayOrder(amountPaise, receipt)
-    RZP_API->>RZP_API: POST https://api.razorpay.com/v1/orders [LIVE]
-    RZP_API-->>Agent: { ok: true, orderId: "order_xyz" }
-    Agent->>Audit: appendAudit(razorpay.order_created) [LIVE]
-    Agent->>RZP_CO: openRazorpayCheckout({ orderId: "order_xyz", amountPaise })
+    Note over Agent,RZP_CO: Phase 5: Real Razorpay Execution
+    Agent->>RZP_API: POST /v1/orders { amountPaise, notes: { noticeId, orderId } }
+    RZP_API-->>Agent: { orderId: "order_live123" }
+    Agent->>RZP_CO: openRazorpayCheckout({ orderId: "order_live123" })
     Human->>RZP_CO: Complete Test Mode Card Payment
-    RZP_CO-->>Agent: handler({ payment_id, order_id, signature })
 
-    Note over Agent,RZP_API: Phase 5: Verification & Reconciliation
+    Note over Agent,RZP_API: Phase 6: Reconciliation & Settlement
+    RZP_CO-->>Agent: handler({ payment_id, order_id, signature })
     Agent->>RZP_API: verifyCheckoutSignature(order_id, payment_id, signature)
-    RZP_API-->>Agent: { ok: true }
-    Agent->>Agent: phase = "pending" [LIVE]
-    Agent->>Audit: appendAudit(razorpay.handler_received) [LIVE]
+    Agent->>Agent: phase = "pending"
     
     loop Polling Status Loop (N=6, delay 2s)
-        Agent->>RZP_API: fetchRazorpayPayment(payment_id)
-        RZP_API->>RZP_API: GET https://api.razorpay.com/v1/payments/:id [LIVE]
+        Agent->>RZP_API: GET /v1/payments/:id
         RZP_API-->>Agent: { status: "captured" }
     end
 
-    Note over Agent,Audit: Phase 6: Confirmation & Settlement
+    Note over Agent,Audit: Phase 7: Confirmation & Stock Settlement
     Agent->>Agent: applyConfirm(source: "fetch", status: "captured")
-    Agent->>Agent: mandate.remainingPaise -= totalPaise
-    Agent->>Agent: liveStock[sku] -= qty
-    Agent->>Agent: confirmedPaymentIds.push(payment_id)
-    Agent->>Audit: appendAudit(razorpay.confirmed) [LIVE]
-    Agent->>UI: Update Phase to "confirmed" & show confirmation
+    Agent->>Merchant: updateMerchantOrder("paid") [AP2 Payment Mandate]
+    Agent->>Agent: decrementLiveStock()
+    Agent->>Audit: appendAudit(razorpay.confirmed)
+    Agent->>UI: Confirmed state & display AP2 Primitives
 ```
 
 ---
 
-## 2. Security & Idempotency Invariants
+## 2. Core Invariants
 
-1. **Mandate Immutability:** Mandate limits cannot be overridden by raw LLM output or prompt injections. The guardrail diffs strongly-typed numeric and category schemas.
-2. **Order-Gated Execution:** No Checkout UI can open without an existing server Order ID (`order_id`).
-3. **Status-Gated Mandate Decrement:** The client handler never decrements the mandate directly. Mandate balances change only when backend Fetch or Webhooks report `status === "captured"`.
-4. **Strict Idempotency:** The global `confirmedPaymentIds` tracking table prevents duplicate webhook deliveries or double-submitted handlers from charging the mandate twice.
-5. **Cryptographic Chain:** Every audit entry calculates `SHA-256(prevHash + "|" + canonicalJson(body))` ensuring tampering detection.
+1. **Token-Level Intent Verification:** The deterministic guardrail strictly validates that user search tokens (e.g. `basmati`) are represented in candidate items, blocking silent same-category substitutions.
+2. **Merchant Order Lifecycle:** Every purchase creates a `MerchantOrder` that reserves catalog stock before the pre-debit notice window and settles or releases inventory deterministically.
+3. **Durable Pre-Debit Notice:** `PreDebitNotice` records timestamp thresholds (`executeAfter`) providing the required regulatory notice window before payment APIs execute.
+4. **Order-Gated Execution:** Razorpay Checkout strictly requires a server-created `order_id`.
+5. **Reconciliation-Gated Mandate Decrement:** Mandate spending balances decrement only when backend Fetch or Webhooks report `status === "captured"`.
+6. **Strict Idempotency:** Duplicate payment events are deduplicated via `confirmedPaymentIds`.

@@ -1,22 +1,40 @@
 # SafeBuy — Bounded AI Buyer for Agentic Commerce
 
 > **Track 01: Agentic Commerce Submission (Option B)**  
-> *Making merchants transactable end-to-end by an autonomous AI buyer using real Razorpay test-mode APIs.*
+> *Making merchants transactable end-to-end by a bounded AI buyer with deterministic policy guardrails and real Razorpay test-mode execution.*
 
-SafeBuy is a bounded AI purchasing agent that enables autonomous grocery shopping while guaranteeing human oversight, budget safety, and compliance with Indian payment regulations.
+SafeBuy is a bounded AI purchasing agent that enables autonomous cart planning while enforcing strict spending policies, deterministic semantic guardrails, and compliance with Indian payment regulations.
 
 ---
 
-## 1. Problem & Regulatory Context (The UAP / AP2 Gap)
+## 1. The Core Philosophy & Regulatory Reality
 
-In India, **no payment rail permits silent, unbounded autonomous debit**. RBI e-mandate guidelines require human authentication (AFA) during registration and explicit pre-debit notification before recurring charges.
+### The Honest Architecture Framing
+In India, **no payment rail permits silent, unbounded autonomous debit without e-mandate registration and pre-debit notification**.
 
-While future standards like NPCI UAP (Unified Agent Protocol) and Google/Visa AP2 evolve, **SafeBuy provides the practical product answer today**:
-1. **Structured Intent Mandate** authenticated at setup.
-2. **Deterministic Semantic Guardrail** verifying cart items against machine-readable policy before funds move.
-3. **Notify-then-Execute Gate** providing a pre-debit window for cancellation before any payment API is called.
-4. **Real Razorpay Test-Mode Execution** creating Orders, handling Checkout HMAC signatures, and confirming status via backend Fetch polling & Webhooks.
-5. **Hash-Chained Append-Only Audit Trail** cryptographically guaranteeing accountability.
+SafeBuy is built as the **missing safety and governance layer** around autonomous AI agents:
+> *"The AI Agent plans and gates; execution is customer-present hosted Checkout / Orders because test-mode silent debit without live bank e-mandate registration is not a legal Indian rail. The pre-debit notice record + dwell window is the safety gate."*
+
+Instead of letting an LLM execute arbitrary API calls, SafeBuy wraps the buyer in a deterministic container modelled after **AP2 (Agentic Payment Protocol)** primitives:
+
+```text
+Human Spending Policy (Intent Mandate)
+                │
+                ▼
+Autonomous Agent Cart Planning (Pack Tokens & Pack Size Hints)
+                │
+                ▼
+Deterministic Semantic Guardrail (Schema & SKU Token Matching)
+                │
+                ▼
+Durable Pre-Debit Notice Record & Merchant Stock Reservation (Cart Mandate)
+                │
+                ▼
+Real Razorpay Orders API (`POST /v1/orders`) + Checkout (Payment Mandate)
+                │
+                ▼
+Reconciliation Loop (`GET /v1/payments/:id` + Webhooks) → Settlement
+```
 
 ---
 
@@ -26,40 +44,54 @@ SafeBuy maintains a strict, transparent boundary between real production logic a
 
 | Component | Layer | Description |
 |-----------|-------|-------------|
-| **Structured Intent Mandate** | **LIVE** | Schema-enforced hard spend limits, allowed/denied brands, category boundaries, and per-item price ceilings. |
-| **Deterministic Guardrail** | **LIVE** | Diffs cart proposals against the structured mandate before initiating payments. |
-| **Razorpay Orders API** | **LIVE** | Real `POST /v1/orders` created before debit with receipt ID, idempotency keys, and attempt metadata. |
-| **Reconciliation Spine** | **LIVE** | Backend polling of `GET /v1/payments/:id` + Webhook HMAC verification. Mandate decrements only on `captured`. |
+| **Structured Intent Mandate** | **LIVE** | Schema-enforced hard spend limits, allowed/denied brands, categories, per-item price ceilings, and policy validity period (`validUntil`). |
+| **Deterministic Guardrail** | **LIVE** | Validates cart items against policy schema **and** instruction pack tokens (`packTokens`, `excludeTokens`), catching real agentic substitution errors (e.g. atta for basmati). |
+| **Merchant Order & Stock Reservation** | **LIVE** | Creates durable `MerchantOrder` reserving catalog inventory before the notice window; settles to `paid` or releases on abort. |
+| **Pre-Debit Notice Record** | **LIVE** | Creates a durable `PreDebitNotice` record with timestamp thresholds (`executeAfter`), dwell countdown, and hold/extend controls. |
+| **Razorpay Orders API** | **LIVE** | Real `POST /v1/orders` created before debit with receipt ID, correlation IDs, and attempt metadata. Checkout requires `order_id`. |
+| **Reconciliation Spine** | **LIVE** | Backend polling of `GET /v1/payments/:id` + Webhook HMAC verification. Mandate decrements only when `status === "captured"`. |
 | **HMAC Signature Verification** | **LIVE** | Server-side cryptographic verification of Checkout `order_id|payment_id` and Webhook payloads. |
-| **Hash-Chained Audit Trail** | **LIVE** | Sequential SHA-256 hash chaining with canonical JSON and UI cryptographic verification. |
+| **Hash-Chained Audit Trail** | **LIVE** | Sequential SHA-256 hash chaining with canonical JSON and interactive UI verification. |
 | **Merchant Catalog (Nila Kirana)** | **SYNTHETIC** | Stand-in grocery merchant catalog providing realistic agent-readable SKUs. |
 | **Bank Pre-debit SMS** | **SYNTHETIC** | Simulated in-app notice standing in for RBI 24h SMS notice. |
-| **Registration AFA PIN (1234)** | **SYNTHETIC** | Simulated registration authentication standing in for bank UPI/card AFA. |
-| **Compressed Notify Window (5s)** | **SYNTHETIC** | 5-second countdown standing in for the regulatory 24-hour notification window. |
+| **Policy Registration Auth** | **SYNTHETIC** | Simulated policy authorization standing in for bank e-mandate registration. |
+| **Compressed Notify Window (8s)** | **SYNTHETIC** | 8-second dwell standing in for the regulatory 24-hour notification window. |
 
 ---
 
-## 3. What Broke & What We Fixed (Architectural Debt Elimination)
+## 3. AP2 Primitive Data Models
 
-1. **Checkout Without Order Bug Fixed:**
-   - *Previous state:* Checkout opened with a client amount only; no server Order was created when secret keys were absent.
-   - *Fix:* Execution strictly gates behind `POST /v1/orders`. Checkout strictly requires `order_id` and fails closed if Order creation fails.
-2. **Dead Fetch Status Polling Restored:**
-   - *Previous state:* Client handler immediately subtracted mandate spend without verifying server status.
-   - *Fix:* Handler transitions state to `pending`. Unified `startReconcile` polls `GET /v1/payments/:id` (N=6, 2s interval). Mandate `remainingPaise` decrements **only when status === captured**.
-3. **HMAC Signature Validation Added:**
-   - *Previous state:* `razorpay_signature` was discarded in the browser.
-   - *Fix:* Server verifies `HMAC_SHA256(order_id + "|" + payment_id, RAZORPAY_KEY_SECRET)` with timing-safe comparison.
-4. **Idempotency & Late Capture Reconciliation:**
-   - *Previous state:* Duplicate webhook/handler calls could double-debit.
-   - *Fix:* Global `confirmedPaymentIds` deduplication map. Late captures arriving after a client timeout safely reconcile without double-debiting.
-5. **Real Soft Decline & Stock Race Recoveries:**
-   - *Previous state:* Lab injects bypassed the payment stack with instant UI shortcuts.
-   - *Fix:* Soft decline executes real status verification and enforces a strict 1-retry cap. Stock race detects zero inventory and automatically plans next-best in-mandate SKU through the guardrail.
+SafeBuy structures transaction state into three distinct JSON documents modelled after Google/Visa AP2 primitives:
+
+1. **AP2 Intent Mandate:** The human-defined policy document defining spend caps, allowed categories, denied brands, and validity expiry.
+2. **AP2 Cart Mandate:** The locked SKU proposal and merchant order reservation produced after guardrail clearance.
+3. **AP2 Payment Mandate:** The settlement contract linking Razorpay `order_id`, `payment_id`, notice record, and reconciliation status.
+
+*(View live generated AP2 documents in the **AP2 Primitives** tab in the app).*
 
 ---
 
-## 4. Setup & Environment Configuration
+## 4. What Broke & What We Fixed
+
+1. **Catches Real Same-Category Agentic Substitutions:**
+   - *Problem:* Previous category-only check allowed substituting atta for basmati because both are `grains`.
+   - *Fix:* Guardrail enforces `packTokens` matching. If the user asks for `"basmati"`, any proposed cart lacking basmati tokens is blocked as a semantic mismatch.
+2. **Clarification Ask-Backs Instead of Silent Drops:**
+   - *Problem:* When user budget was too low (e.g. `"under ₹50"`), previous planner silently gave an empty cart.
+   - *Fix:* Agent actively asks back: *"The lowest available price in grains is ₹142 (Aged Basmati Rice). Would you like to increase your budget?"*
+3. **Durable Pre-Debit Notice & Stock Reservation:**
+   - *Problem:* Notice window was previously a CSS countdown with no underlying data contract.
+   - *Fix:* Created `PreDebitNotice` and `MerchantOrder` lifecycle (`reserved` → `paid` / `released`).
+4. **Checkout Without Order Bug Fixed:**
+   - *Problem:* Checkout opened with a client amount only when server credentials were not bound.
+   - *Fix:* Checkout strictly requires `order_id` generated via `POST /v1/orders`.
+5. **Dead Fetch Status Polling Restored:**
+   - *Problem:* Client handler immediately subtracted mandate spend without verifying server status.
+   - *Fix:* Handler transitions state to `pending`. Polling verifies `status === "captured"` before debiting the mandate.
+
+---
+
+## 5. Setup & Environment Configuration
 
 ### Prerequisites
 - Node.js 22+
@@ -86,96 +118,35 @@ npm install
 # Run dev server on 0.0.0.0:8080
 npm run dev
 
-# Run typecheck
+# Run TypeScript typecheck
 npm run typecheck
 
 # Run unit tests
 npm run test:unit
 ```
 
-### 3. Test Card Credentials
+### 3. Razorpay Test Cards
 When Razorpay Checkout opens, use test mode credentials:
-- **Card Number:** `4111 1111 1111 1111`
-- **Expiry:** Any future date (e.g. `12/30`)
-- **CVV:** Any 3 digits (e.g. `123`)
-- **OTP:** Any 4/6 digits (e.g. `123456`)
+- **Success Test Card:** `4111 1111 1111 1111`, Expiry: future date (`12/30`), CVV: `123`, OTP: `123456`.
+- **Soft Decline Card:** `4000 0000 0000 1003` (Returns card declined / insufficient funds to test retry cap).
 
-### 4. Webhook Tunnel Setup (Optional for Webhooks)
+### 4. Webhook Tunnel Setup
 To receive live Razorpay Webhooks on your local machine:
-1. Start tunnel: `ngrok http 8080` or `cloudflared tunnel --url http://localhost:8080`
+1. Start tunnel: `ngrok http 8080`
 2. In Razorpay Dashboard -> Settings -> Webhooks, add endpoint:
    `https://<your-tunnel-url>/api/razorpay/webhook`
-3. Select events:
-   - `payment.captured`
-   - `payment.failed`
-   - `order.paid`
-4. Set Webhook Secret in dashboard and add to your `.env` as `RAZORPAY_WEBHOOK_SECRET`.
+3. Select events: `payment.captured`, `payment.failed`, `order.paid`.
 
 ---
 
-## 5. User Walkthrough & Failure Lab Scenarios
+## 6. Failure Lab Scenarios & Golden Utterances
 
-1. **Happy Path:**
-   - Create Mandate (PIN: `1234`).
-   - In Buy panel, send: *"Buy 1 kg basmati under ₹150"*.
-   - View 5s notify countdown (pre-debit notice).
-   - Real Razorpay test Checkout opens with generated `order_id`.
-   - Complete payment with test card.
-   - Status verified via Fetch/Webhook; mandate balance decrements accurately; audit hash chained.
-2. **Semantic Mismatch Lab:**
-   - Select "LLM mismatch" in Lab tab.
-   - Send: *"Buy 1 kg rice"*.
-   - Agent proposes chocolate; Guardrail detects category mismatch and surfaces Human Override Confirmation modal.
-3. **Stock Race Recovery Lab:**
-   - Select "Stock race" in Lab tab.
-   - Initial basmati SKU stock drops to 0; Agent automatically discovers next-best in-mandate rice SKU and continues through the guardrail.
-4. **Soft Decline & Retry Cap Lab:**
-   - Select "Soft decline" in Lab tab.
-   - Status fetch reports failure; system caps retry at 1 attempt and halts without multiple charges.
-5. **Cryptographic Audit Verification:**
-   - Navigate to Audit tab and click **"Verify Audit Chain"**.
-   - System traverses every record from `GENESIS_HASH`, re-computing SHA-256 signatures to prove zero tampering.
-
----
-
-## 6. Architecture Sequence Diagram
-
-```text
-User Instruction ──► Structured Intent Parser (Grok / Deterministic)
-                               │
-                               ▼
-                   Cart Planner (Catalog + Live Stock)
-                               │
-                               ▼
-                   Deterministic Guardrail (Mandate Rules)
-                               │
-               ┌───────────────┴───────────────┐
-             [Pass]                         [Mismatch / AFA > 15k]
-               │                                       │
-               ▼                                       ▼
-    5s Pre-Debit Window (Simulated)         Human Confirmation Modal
-               │                                       │
-               ▼                                       ▼
-     POST /v1/orders (Razorpay) ───────────► User Approved Override
-               │
-               ▼
-     Open Checkout (order_id)
-               │
-               ▼
-       phase = pending ◄── (Handler returns IDs & HMAC Signature)
-               │
-       ┌───────┴───────┐
-       ▼               ▼
-  GET /v1/payments   Webhook (POST /api/razorpay/webhook)
-       │               │
-       └───────┬───────┘
-               ▼
-       applyConfirm (Idempotent)
-               │
-               ├─► Mandate remainingPaise -= total
-               ├─► Inventory stock -= qty
-               └─► SHA-256 Append-Only Audit Record
-```
+Try these 1-click golden utterances in the Buy panel:
+- **`"Buy 1 kg basmati under ₹150"`**: Complete happy path flow.
+- **`"Get 1 kg toor dal"`**: Exact category and SKU matching.
+- **`"Buy 1 kg basmati under ₹50"`**: Low budget triggering agent clarification ask-back.
+- **`"Get 5 kg atta with Cadbury chocolate"`**: Deny-brand guardrail block.
+- **`"Buy organic moong dal 500g"`**: Brand and pack size hint matching.
 
 ---
 
