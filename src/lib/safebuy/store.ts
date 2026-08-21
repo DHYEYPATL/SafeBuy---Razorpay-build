@@ -6,6 +6,7 @@ import { GENESIS_HASH, hashRecord } from "./hash";
 import { coerceIntent, parseIntentDeterministic } from "./parse-intent";
 import { planCart } from "./plan";
 import { fetchRazorpayPayment, parseIntentWithGrok } from "./razorpay-api";
+import { findBoundedUpsell, type UpsellCandidate } from "./upsell";
 import {
   AFA_EXEMPT_PAISE,
   DEMO_NOTIFY_WINDOW_MS,
@@ -43,6 +44,7 @@ interface SafeBuyState {
   pendingCart: ProposedCart | null;
   pendingIntent: StructuredIntent | null;
   pendingAttemptId: string | null;
+  upsellCandidate: UpsellCandidate | null;
   correlationId: string | null;
   razorpayKeyId: string;
   hasSecret: boolean;
@@ -51,6 +53,8 @@ interface SafeBuyState {
   lastExplain: string;
   stockOverride: Record<string, number>;
   hydrateOk: boolean;
+  acceptUpsell: () => Promise<void>;
+  dismissUpsell: () => void;
   setRazorpayKeyDetails: (k: { keyId: string; hasSecret: boolean; configured: boolean }) => void;
   setLabInject: (i: LabInject) => void;
   createMandate: (m: {
@@ -117,6 +121,7 @@ export const useSafeBuy = create<SafeBuyState>()(
       pendingCart: null,
       pendingIntent: null,
       pendingAttemptId: null,
+      upsellCandidate: null,
       correlationId: null,
       razorpayKeyId: "",
       hasSecret: false,
@@ -534,9 +539,13 @@ export const useSafeBuy = create<SafeBuyState>()(
           createdAt: nowIso(),
         };
 
+        // Bounded Upsell Discovery: Evaluate sibling pack sizes after guardrail clearance
+        const upsell = findBoundedUpsell(cart, mandate, intent, CATALOG);
+
         set({
           phase: "notify",
           pendingAttemptId: attempt.id,
+          upsellCandidate: upsell,
           attempts: [...get().attempts, attempt],
           notices: [...get().notices, notice],
           merchantOrders: [...get().merchantOrders, merchantOrder],
@@ -551,6 +560,17 @@ export const useSafeBuy = create<SafeBuyState>()(
             },
           ],
         });
+
+        if (upsell) {
+          await get().appendAudit({
+            correlationId: cid,
+            phase: "notify",
+            event: "upsell.surfaced",
+            layer: "live",
+            explain: `Bounded upsell discovered: ${upsell.explanation}`,
+            payload: { upsell },
+          });
+        }
 
         await get().appendAudit({
           correlationId: cid,
@@ -997,6 +1017,90 @@ export const useSafeBuy = create<SafeBuyState>()(
             },
           ],
         });
+      },
+
+      acceptUpsell: async () => {
+        const st = get();
+        const upsell = st.upsellCandidate;
+        const attempt = st.attempts.find((a) => a.id === st.pendingAttemptId);
+        const item = CATALOG.find((c) => c.sku === upsell?.suggestedSku);
+        if (!upsell || !attempt || !item) return;
+
+        const newCart: ProposedCart = {
+          lines: [
+            {
+              sku: item.sku,
+              name: item.name,
+              brand: item.brand,
+              category: item.category,
+              unitPricePaise: item.pricePaise,
+              quantity: 1,
+              linePaise: item.pricePaise,
+            },
+          ],
+          totalPaise: item.pricePaise,
+          merchantId: "nila-kirana",
+          merchantName: "Nila Kirana",
+          reason: `Bounded upsell applied: Switched to ${item.name} (${upsell.savingsPercent}% savings per unit)`,
+        };
+
+        const updatedAttempts = st.attempts.map((a) =>
+          a.id === attempt.id ? { ...a, cart: newCart } : a,
+        );
+
+        const updatedNotices = st.notices.map((n) =>
+          n.attemptId === attempt.id
+            ? { ...n, amountPaise: newCart.totalPaise, skus: [item.sku] }
+            : n,
+        );
+
+        const updatedMerchantOrders = st.merchantOrders.map((mo) =>
+          mo.attemptId === attempt.id
+            ? { ...mo, lines: newCart.lines, totalPaise: newCart.totalPaise }
+            : mo,
+        );
+
+        set({
+          pendingCart: newCart,
+          upsellCandidate: null,
+          attempts: updatedAttempts,
+          notices: updatedNotices,
+          merchantOrders: updatedMerchantOrders,
+          chat: [
+            ...st.chat,
+            {
+              id: newId("msg"),
+              role: "agent",
+              ts: nowIso(),
+              text: `Switched to ${item.name} (₹${item.pricePaise / 100}). Pre-debit notice and merchant order updated.`,
+            },
+          ],
+        });
+
+        await st.appendAudit({
+          correlationId: attempt.correlationId,
+          phase: "window",
+          event: "upsell.accepted",
+          layer: "live",
+          explain: `User accepted bounded upsell: Switched to ${item.name} saving ${upsell.savingsPercent}% per unit.`,
+          payload: { fromSku: upsell.originalSku, toSku: upsell.suggestedSku, savingsPercent: upsell.savingsPercent },
+        });
+      },
+
+      dismissUpsell: () => {
+        const st = get();
+        const upsell = st.upsellCandidate;
+        set({ upsellCandidate: null });
+        if (upsell) {
+          void st.appendAudit({
+            correlationId: st.correlationId ?? newId("cor"),
+            phase: "window",
+            event: "upsell.dismissed",
+            layer: "live",
+            explain: `User dismissed upsell recommendation for ${upsell.suggestedName}. Proceeding with original selection.`,
+            payload: { upsell },
+          });
+        }
       },
 
       abortPending: async (reason) => {

@@ -4,18 +4,21 @@ This checklist reproduces the exact evaluation steps a Razorpay judge will perfo
 
 ---
 
-## 1. Automated Verification Gates
+# 1. Automated Verification Gates
 
 Execute in project root:
 ```bash
 # 1. Typecheck: Zero compiler errors
 npm run typecheck
 
-# 2. Automated Unit Tests: 18/18 tests passing
+# 2. Automated Unit Tests: 22/22 tests passing
 npm run test:unit
+
+# 3. Third-Party Agent Discovery Demonstration (Zero SafeBuy internal imports)
+npx tsx scripts/external-agent-demo.ts
 ```
 
-Expected Output:
+Expected Test Output:
 ```text
 > tsx --test "src/lib/safebuy/__tests__/*.test.ts"
 
@@ -38,8 +41,12 @@ ok 15 - PlanCart: respects excludeSkus during stock race recovery
 ok 16 - Signature: verifies valid Razorpay Checkout HMAC signature
 ok 17 - Signature: rejects forged or mismatched Checkout signature
 ok 18 - Signature: verifies valid Razorpay webhook raw body signature
-1..18
-# tests 18, pass 18, fail 0
+ok 19 - Upsell: surfaces 5kg economy pack with unit-price savings within mandate limit
+ok 20 - Upsell: rejects candidate if total price exceeds remaining mandate cap
+ok 21 - Upsell: rejects candidate if total price exceeds user explicit prompt budget
+ok 22 - Upsell: rejects candidate if brand is denied in policy
+1..22
+# tests 22, pass 22, fail 0
 ```
 
 ---
@@ -50,14 +57,16 @@ ok 18 - Signature: verifies valid Razorpay webhook raw body signature
 |---|----------------|-------------------|---------------|
 | 1 | **Test Credentials Guard** | Launch app without `.env` keys. | Yellow warning banner displayed; Checkout refuses to open without keys. |
 | 2 | **Happy Path Spend** | Establish policy (₹1500), send `"Buy 1 kg basmati under ₹150"`. | Pre-debit notice `#not_...` issued; Razorpay Order created; Checkout opens with real `order_id`; test payment completes; status changes to `pending` then `confirmed` via Fetch. Mandate remaining drops to ₹1358. |
-| 3 | **Token-Level Guardrail** | Establish policy, send `"Buy 1 kg basmati under ₹150"`, inject Mismatch or select Cadbury. | Guardrail blocks because `basmati` token is not in candidate cart; Human Confirmation modal appears. |
-| 4 | **Agent Ask-Back** | Send `"Buy 1 kg basmati under ₹50"`. | Agent asks: *"The lowest available price in grains is ₹142 (Aged Basmati Rice 1 kg). Would you like to increase your budget?"* |
-| 5 | **Pre-Debit Notice Controls** | Trigger buy, click `+5s Hold/Extend` during countdown. | Notice dwell extends by 5 seconds; audit logs `notify.window_extended`. Click `Abort` releases reserved stock. |
-| 6 | **Merchant Order Lifecycle** | Inspect **Orders tab** before and after payment. | Order status transitions from `RESERVED` → `PAID`. Live catalog stock decrements. |
-| 7 | **AP2 Primitives Documents** | Inspect **AP2 Primitives tab**. | Three JSON schemas displayed: `AP2IntentMandate`, `AP2CartMandate`, `AP2PaymentMandate`. |
-| 8 | **Cryptographic Audit Verifier** | Inspect **Audit tab**, click **"Verify Audit Chain"**. | Traverses every record from `GENESIS_HASH`; displays green banner confirming unbroken SHA-256 integrity. |
-| 9 | **Idempotent Reconciliation** | Inspect store and console on duplicate callbacks. | Second callback for same `payment_id` logs `razorpay.duplicate_ignored` with zero double-debit. |
-| 10 | **Soft Decline Recovery** | Select "Soft decline" in Lab, attempt payment with card `4000 0000 0000 1003`. | Fetches failed status from Razorpay; limits to 1 retry; halts cleanly. |
+| 3 | **Bounded Upsell Engine** | During notice countdown for 1kg Basmati, inspect card. | Smart Unit-Price Upsell surfaces 5kg Economy Pack (12% cheaper per kg); clicking "Switch" updates pre-debit notice and merchant order. |
+| 4 | **External Agent Discovery** | Run `npx tsx scripts/external-agent-demo.ts`. | External agent connects to `/.well-known/agent-catalog.json`, discovers merchant SKUs, matches tokens, and verifies machine transactability. |
+| 5 | **Token-Level Guardrail** | Establish policy, send `"Buy 1 kg basmati under ₹150"`, inject Mismatch or select Cadbury. | Guardrail blocks because `basmati` token is not in candidate cart; Human Confirmation modal appears. |
+| 6 | **Agent Ask-Back** | Send `"Buy 1 kg basmati under ₹50"`. | Agent asks: *"The lowest available price in grains is ₹142 (Aged Basmati Rice 1 kg). Would you like to increase your budget?"* |
+| 7 | **Pre-Debit Notice Controls** | Trigger buy, click `+5s Hold/Extend` during countdown. | Notice dwell extends by 5 seconds; audit logs `notify.window_extended`. Click `Abort` releases reserved stock. |
+| 8 | **Merchant Order Lifecycle** | Inspect **Orders tab** before and after payment. | Order status transitions from `RESERVED` → `PAID`. Live catalog stock decrements. |
+| 9 | **AP2 Primitives Documents** | Inspect **AP2 Primitives tab**. | Three JSON schemas displayed: `AP2IntentMandate`, `AP2CartMandate`, `AP2PaymentMandate`. |
+| 10 | **Cryptographic Audit Verifier** | Inspect **Audit tab**, click **"Verify Audit Chain"**. | Traverses every record from `GENESIS_HASH`; displays green banner confirming unbroken SHA-256 integrity. |
+| 11 | **Idempotent Reconciliation** | Inspect store and console on duplicate callbacks. | Second callback for same `payment_id` logs `razorpay.duplicate_ignored` with zero double-debit. |
+| 12 | **Soft Decline Recovery** | Select "Soft decline" in Lab, attempt payment with card `4000 0000 0000 1003`. | Fetches failed status from Razorpay; limits to 1 retry; halts cleanly. |
 
 ---
 

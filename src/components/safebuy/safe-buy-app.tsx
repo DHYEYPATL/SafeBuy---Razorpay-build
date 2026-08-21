@@ -7,6 +7,8 @@ import {
   KeyRound,
   Radio,
   AlertTriangle,
+  ExternalLink,
+  Ban,
   Check,
   Clock,
   CheckCircle2,
@@ -155,27 +157,75 @@ function Header() {
   const mandate = useSafeBuy((s) => s.mandate);
   const phase = useSafeBuy((s) => s.phase);
   const isConfigured = useSafeBuy((s) => s.isConfigured);
+  const audit = useSafeBuy((s) => s.audit);
+
+  // Compute quantified metrics from the live audit chain
+  const blockedAttempts = audit.filter(
+    (a) => a.event === "guardrail.block" || a.event === "fail_closed",
+  ).length;
+  const blockedAmountPaise = audit
+    .filter((a) => a.event === "guardrail.block" && (a.payload as { cart?: { totalPaise?: number } })?.cart?.totalPaise)
+    .reduce((sum, a) => sum + (Number((a.payload as { cart?: { totalPaise?: number } })?.cart?.totalPaise) || 0), 0);
+
+  const upsellAccepted = audit.filter((a) => a.event === "upsell.accepted").length;
+  const totalSpentPaise = mandate?.spentPaise ?? 0;
 
   return (
-    <header className="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <p className="text-xs uppercase tracking-[0.18em] text-muted">Track 01 · Agentic commerce</p>
-        <h1 className="font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">SafeBuy</h1>
-        <p className="mt-1 max-w-xl text-sm text-muted">
-          A bounded AI buyer. Policy guardrails and pre-debit notice gate money movement. Merchant catalog and bank SMS are synthetic. Razorpay test-mode is the real debit.
-        </p>
+    <header className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted">Track 01 · Agentic commerce</p>
+          <h1 className="font-display text-4xl font-medium tracking-tight text-foreground sm:text-5xl">SafeBuy</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted">
+            A bounded AI buyer. Policy guardrails and pre-debit notice gate money movement. Merchant catalog and bank SMS are synthetic. Razorpay test-mode is the real debit.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={mandate?.status === "active" ? "ok" : "neutral"}>
+            {mandate ? `Policy ${mandate.status}` : "No policy"}
+          </Badge>
+          <Badge tone={phase === "pending" ? "warn" : phase === "confirmed" ? "ok" : phase === "failed" ? "bad" : "neutral"}>
+            {phase === "pending" ? "PENDING · verifying status" : phase}
+          </Badge>
+          <Badge tone={isConfigured ? "ok" : "warn"}>
+            {isConfigured ? "Razorpay Test Live" : "Keys Missing"}
+          </Badge>
+          {mandate ? <span className="font-mono text-sm tabular-nums">{paiseToInr(mandate.remainingPaise)} left</span> : null}
+        </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge tone={mandate?.status === "active" ? "ok" : "neutral"}>
-          {mandate ? `Policy ${mandate.status}` : "No policy"}
-        </Badge>
-        <Badge tone={phase === "pending" ? "warn" : phase === "confirmed" ? "ok" : phase === "failed" ? "bad" : "neutral"}>
-          {phase === "pending" ? "PENDING · verifying status" : phase}
-        </Badge>
-        <Badge tone={isConfigured ? "ok" : "warn"}>
-          {isConfigured ? "Razorpay Test Live" : "Keys Missing"}
-        </Badge>
-        {mandate ? <span className="font-mono text-sm tabular-nums">{paiseToInr(mandate.remainingPaise)} left</span> : null}
+
+      {/* Quantified Metrics & Protocol Discovery Bar */}
+      <div className="grid grid-cols-2 gap-2 rounded-[var(--radius-md)] border border-border bg-surface p-3 text-xs sm:grid-cols-4">
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-subtle">Guardrail Protection</p>
+          <p className="mt-0.5 font-mono text-sm font-semibold text-emerald-400">
+            {paiseToInr(blockedAmountPaise)} blocked <span className="text-[10px] font-normal text-muted">({blockedAttempts} tries)</span>
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-subtle">Bounded Upsell Savings</p>
+          <p className="mt-0.5 font-mono text-sm font-semibold text-primary">
+            {upsellAccepted > 0 ? `${upsellAccepted} accepted` : "Active"} <span className="text-[10px] font-normal text-muted">(unit-price optimized)</span>
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-subtle">Safe Volume Settled</p>
+          <p className="mt-0.5 font-mono text-sm font-semibold text-foreground">
+            {paiseToInr(totalSpentPaise)} <span className="text-[10px] font-normal text-muted">(captured)</span>
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-subtle">Machine Discovery</p>
+          <a
+            href="/.well-known/agent-catalog.json"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-0.5 flex items-center gap-1 font-mono text-xs text-primary hover:underline"
+          >
+            <span>/.well-known/agent-catalog.json</span>
+            <ExternalLink className="size-3" />
+          </a>
+        </div>
       </div>
     </header>
   );
@@ -792,28 +842,60 @@ function GateOverlay() {
   const pendingId = useSafeBuy((s) => s.pendingAttemptId);
   const attempt = attempts.find((a) => a.id === pendingId);
 
+  const upsell = useSafeBuy((s) => s.upsellCandidate);
+
   if (phase === "window" && cart) {
     const pct = Math.max(0, left / DEMO_NOTIFY_WINDOW_MS);
     return (
       <div className="fixed inset-0 z-40 flex items-end justify-center bg-bg/70 p-4 sm:items-center">
-        <div className="w-full max-w-md rounded-[var(--radius-xl)] border border-border bg-surface p-5">
+        <div className="w-full max-w-md space-y-3 rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-2xl">
           <div className="flex items-center justify-between">
             <h3 className="font-display text-xl">Pre-Debit Notice Active</h3>
             <LayerBadge layer="live" />
           </div>
-          <p className="mt-2 text-xs font-mono text-subtle">
+          <p className="text-xs font-mono text-subtle">
             Notice #{attempt?.noticeId ?? "not_active"} · Order #{attempt?.merchantOrderId ?? "mord_active"}
           </p>
-          <p className="mt-2 text-sm font-medium text-foreground">
+          <p className="text-sm font-medium text-foreground">
             {MERCHANT_NAME} · {cart.lines.map((l) => l.name).join(", ")} · {paiseToInr(cart.totalPaise)}
           </p>
-          <p className="mt-2 text-xs text-subtle">
+
+          {/* Bounded Upsell Recommendation Card */}
+          {upsell ? (
+            <div className="rounded-[var(--radius-lg)] border border-primary/40 bg-primary/10 p-3 text-xs">
+              <div className="flex items-center justify-between font-semibold text-primary">
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="size-3.5" /> Smart Unit-Price Upsell ({upsell.savingsPercent}% Savings)
+                </span>
+                <span className="rounded bg-primary/20 px-1.5 py-0.5 font-mono text-[10px]">Bounded</span>
+              </div>
+              <p className="mt-1 text-foreground/90 leading-relaxed">
+                {upsell.explanation}
+              </p>
+              <div className="mt-2.5 flex items-center gap-2">
+                <button
+                  onClick={() => void useSafeBuy.getState().acceptUpsell()}
+                  className="rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90"
+                >
+                  Switch to {upsell.suggestedName}
+                </button>
+                <button
+                  onClick={() => useSafeBuy.getState().dismissUpsell()}
+                  className="text-xs text-muted hover:text-foreground"
+                >
+                  Keep original
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <p className="text-xs text-subtle">
             Pre-debit dwell window standing in for RBI notify-then-execute. After this window, Razorpay test Order executes.
           </p>
-          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-elevated">
+          <div className="h-1.5 overflow-hidden rounded-full bg-elevated">
             <div className="h-full bg-primary transition-all duration-200" style={{ width: `${pct * 100}%` }} />
           </div>
-          <div className="mt-3 flex items-center justify-between text-xs">
+          <div className="flex items-center justify-between text-xs">
             <span className="flex items-center gap-1.5 font-mono tabular-nums text-foreground">
               <Clock className="size-3.5" /> {(left / 1000).toFixed(1)}s remaining
             </span>
@@ -824,7 +906,7 @@ function GateOverlay() {
               +5s Hold/Extend
             </button>
           </div>
-          <div className="mt-4 flex gap-2">
+          <div className="flex gap-2 pt-1">
             <Button size="sm" onClick={() => void useSafeBuy.getState().proceedNow()}>
               Proceed Now
             </Button>

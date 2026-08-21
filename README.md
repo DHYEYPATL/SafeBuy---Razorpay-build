@@ -46,6 +46,8 @@ SafeBuy maintains a strict, transparent boundary between real production logic a
 |-----------|-------|-------------|
 | **Structured Intent Mandate** | **LIVE** | Schema-enforced hard spend limits, allowed/denied brands, categories, per-item price ceilings, and policy validity period (`validUntil`). |
 | **Deterministic Guardrail** | **LIVE** | Validates cart items against policy schema **and** instruction pack tokens (`packTokens`, `excludeTokens`), catching real agentic substitution errors (e.g. atta for basmati). |
+| **Deterministic Bounded Upsell** | **LIVE** | Surfaces unit-price optimization suggestions (e.g. 5kg pack saving 12%/kg) strictly bounded by remaining mandate limits and brand constraints. |
+| **Machine-Readable Discovery** | **LIVE** | `/.well-known/agent-catalog.json` AP2/ACP-compliant public discovery manifest exposing structured SKU metadata and `packTokens` for external AI buyers. |
 | **Merchant Order & Stock Reservation** | **LIVE** | Creates durable `MerchantOrder` reserving catalog inventory before the notice window; settles to `paid` or releases on abort. |
 | **Pre-Debit Notice Record** | **LIVE** | Creates a durable `PreDebitNotice` record with timestamp thresholds (`executeAfter`), dwell countdown, and hold/extend controls. |
 | **Razorpay Orders API** | **LIVE** | Real `POST /v1/orders` created before debit with receipt ID, correlation IDs, and attempt metadata. Checkout requires `order_id`. |
@@ -60,7 +62,22 @@ SafeBuy maintains a strict, transparent boundary between real production logic a
 
 ---
 
-## 3. AP2 Primitive Data Models
+## 3. External Third-Party Agent Discovery
+
+SafeBuy makes merchants machine-transactable by **any** external AI buyer through standard machine discovery:
+
+```bash
+# Run the standalone third-party agent demonstration (zero internal SafeBuy imports)
+npx tsx scripts/external-agent-demo.ts
+```
+
+Endpoint exposed at:
+- Discovery Root: `GET http://localhost:8080/.well-known/agent-catalog.json`
+- Structured SKUs: `GET http://localhost:8080/api/catalog/skus`
+
+---
+
+## 4. AP2 Primitive Data Models
 
 SafeBuy structures transaction state into three distinct JSON documents modelled after Google/Visa AP2 primitives:
 
@@ -72,7 +89,7 @@ SafeBuy structures transaction state into three distinct JSON documents modelled
 
 ---
 
-## 4. What Broke & What We Fixed
+## 5. What Broke & What We Fixed
 
 1. **Catches Real Same-Category Agentic Substitutions:**
    - *Problem:* Previous category-only check allowed substituting atta for basmati because both are `grains`.

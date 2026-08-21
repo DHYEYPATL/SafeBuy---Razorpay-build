@@ -218,6 +218,82 @@ function razorpayWebhookPlugin(): Plugin {
   };
 }
 
+function agentCatalogPlugin(): Plugin {
+  return {
+    name: "app-builder:agent-catalog",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        try {
+          const rawUrl = req.url ?? "";
+          const pathOnly = rawUrl.split("?", 1)[0] ?? "";
+
+          // 1. Discovery Manifest: /.well-known/agent-catalog.json
+          if (pathOnly === "/.well-known/agent-catalog.json") {
+            const mod = (await server.ssrLoadModule("/src/lib/safebuy/catalog.ts")) as typeof import("./src/lib/safebuy/catalog");
+            const catalog = mod.CATALOG;
+
+            const manifest = {
+              merchant: {
+                id: "nila-kirana",
+                name: "Nila Kirana Store",
+                currency: "INR",
+                catalogVersion: "2026.08-v1",
+                supportedCurrencies: ["INR"],
+                settlementMethods: ["razorpay_orders_v1", "pre_debit_notice_v1"],
+              },
+              discoveryProtocol: "safebuy-acp-compatible-v1",
+              standardCompliance: ["AP2-Product-Discovery-Draft", "NPCI-UAP-Modelled"],
+              skus: catalog.map((item) => ({
+                sku: item.sku,
+                name: item.name,
+                category: item.category,
+                brand: item.brand,
+                unit: item.unit,
+                unitPricePaise: item.pricePaise,
+                unitPriceRupees: item.pricePaise / 100,
+                stock: item.stock,
+                packTokens: item.name.toLowerCase().split(/[\s,]+/).filter((t) => t.length > 2),
+                brandTags: [item.brand.toLowerCase()],
+                lastUpdated: new Date().toISOString(),
+              })),
+              endpoints: {
+                catalogManifest: "/.well-known/agent-catalog.json",
+                skus: "/api/catalog/skus",
+                webhook: "/api/razorpay/webhook",
+              },
+              rateLimit: {
+                maxRequestsPerMinute: 60,
+                policy: "no_pii_exposed_public_catalog",
+              },
+            };
+
+            res.statusCode = 200;
+            res.setHeader("content-type", "application/json");
+            res.setHeader("access-control-allow-origin", "*");
+            res.end(JSON.stringify(manifest, null, 2));
+            return;
+          }
+
+          // 2. Structured SKUs endpoint: /api/catalog/skus
+          if (pathOnly === "/api/catalog/skus") {
+            const mod = (await server.ssrLoadModule("/src/lib/safebuy/catalog.ts")) as typeof import("./src/lib/safebuy/catalog");
+            res.statusCode = 200;
+            res.setHeader("content-type", "application/json");
+            res.setHeader("access-control-allow-origin", "*");
+            res.end(JSON.stringify({ ok: true, count: mod.CATALOG.length, items: mod.CATALOG }));
+            return;
+          }
+
+          next();
+        } catch (err) {
+          console.error("[app-builder] agent-catalog error:", err);
+          next();
+        }
+      });
+    },
+  };
+}
+
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
@@ -239,6 +315,8 @@ export default defineConfig(({ command, isPreview }) => ({
     authPopupPlugin(),
     // Real HTTP Webhook route for Razorpay events
     razorpayWebhookPlugin(),
+    // Machine-readable agent catalog discovery plugin
+    agentCatalogPlugin(),
     // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.
     appEnvPlugin(),
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.

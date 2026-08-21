@@ -26,9 +26,12 @@ We built a dual-layer commerce and payment spine:
 - **LIVE (Real Code & Real APIs):**
   - Spending Policy Schema & validity checks.
   - Token-level Deterministic Guardrail (`packTokens`, `excludeTokens`, brand limits, price ceilings).
+  - Deterministic Bounded Upsell Engine (unit-price optimization suggestions strictly bounded by policy limits).
+  - AP2/ACP-compliant Machine Discovery Endpoint (`GET /.well-known/agent-catalog.json` and `GET /api/catalog/skus`).
+  - Standalone External Third-Party Agent Script (`scripts/external-agent-demo.ts`).
   - Razorpay Orders API (`POST /v1/orders`) with idempotency headers.
   - Razorpay Checkout.js with mandatory `order_id`.
-  - Backend Payment Status Polling (`GET /v1/payments/:id`) and offline HMAC Webhook Verification module.
+  - Backend Payment Status Polling (`GET /v1/payments/:id`) and HTTP Webhook Ingress with raw body HMAC SHA-256 verification.
   - Server-side HMAC-SHA256 signature verification.
   - Single `applyConfirm` mutator with `confirmedPaymentIds` deduplication.
   - Cryptographic SHA-256 hash-chained audit trail with verification tool.

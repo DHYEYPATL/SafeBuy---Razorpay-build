@@ -61,6 +61,21 @@ In SafeBuy, `parseIntent` extracts specific `packTokens: ['basmati']`. The deter
 
 ---
 
+### Q7: "How is SafeBuy different from just a frontend checkout page?"
+**Answer:**  
+*"SafeBuy makes the **merchant machine-transactable by ANY third-party AI buyer**, not just our frontend.  
+We expose an AP2/ACP-compliant discovery endpoint at `/.well-known/agent-catalog.json` and `/api/catalog/skus`. External agents can discover stock, read structured `packTokens`, check prices, and submit carts directly. In our demo, we run `scripts/external-agent-demo.ts`—a standalone third-party script with zero SafeBuy imports that discovers and transactions with our merchant live over HTTP."*
+
+---
+
+### Q8: "Why is your Bounded Upsell deterministic rather than LLM-driven?"
+**Answer:**  
+*"Because the same safety principle that blocks bad substitutions must police good ones: Keep non-deterministic LLMs out of money-adjacent decisions.  
+Our Bounded Upsell engine is a pure deterministic function that evaluates same-brand economy pack sizes (e.g. 5kg vs 1kg basmati) that lower the unit price (₹/kg) while strictly adhering to remaining mandate limits and brand deny lists. It's symmetric and provable."*
+
+
+---
+
 ## 3. What to Have Open During the Interview
 1. **SafeBuy Web App** running on `localhost:8080`.
 2. **Razorpay Dashboard in Test Mode** showing real Orders and Payments.

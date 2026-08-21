@@ -14,6 +14,16 @@ export const CATALOG: CatalogItem[] = [
     description: "Long-grain aged basmati, everyday cooking.",
   },
   {
+    sku: "RICE-BAS-5KG",
+    name: "Aged Basmati Rice 5 kg (Economy Pack)",
+    brand: "India Gate",
+    category: "grains",
+    pricePaise: 62500,
+    unit: "5 kg",
+    stock: 10,
+    description: "Long-grain aged basmati in bulk economy pack (₹125/kg).",
+  },
+  {
     sku: "RICE-SON-5KG",
     name: "Sona Masoori 5 kg",
     brand: "Lal Qilla",

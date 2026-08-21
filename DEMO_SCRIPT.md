@@ -60,7 +60,17 @@
 
 ---
 
-### Segment 5: AP2 Primitives & Cryptographic Audit Trail (4:05 – 5:00)
+### Segment 5: Bounded Upsell & Third-Party Agent Discovery (3:45 – 4:30)
+- **On Screen:** Pre-Debit Window with Upsell Card & Terminal running `external-agent-demo.ts`.
+- **Actions:**
+  1. Show the **Bounded Upsell Card** during notice dwell: *“When buying 1kg Basmati, the deterministic upsell engine surfaces the 5kg Economy Pack (12% cheaper per kg) strictly bounded by remaining mandate limits and brand preference.”*
+  2. Switch to terminal and run `npx tsx scripts/external-agent-demo.ts`.
+  3. Show the live output: A completely independent external AI buyer fetching `/.well-known/agent-catalog.json`, querying `packTokens`, and selecting compliant SKUs with zero SafeBuy internal imports.
+  4. Script: *“This proves our merchant is machine-transactable by ANY third-party agent using AP2/ACP discovery, not just our frontend.”*
+
+---
+
+### Segment 6: AP2 Primitives & Cryptographic Audit Trail (4:30 – 5:00)
 - **On Screen:** AP2 Primitives Tab & Audit Tab.
 - **Actions:**
   1. Show the **AP2 Primitives tab**: Live generated `AP2IntentMandate` (policy), `AP2CartMandate` (locked items + merchant reservation), and `AP2PaymentMandate` (Razorpay order settlement).
