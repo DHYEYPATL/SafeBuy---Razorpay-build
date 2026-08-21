@@ -73,6 +73,17 @@ We expose an AP2/ACP-compliant discovery endpoint at `/.well-known/agent-catalog
 *"Because the same safety principle that blocks bad substitutions must police good ones: Keep non-deterministic LLMs out of money-adjacent decisions.  
 Our Bounded Upsell engine is a pure deterministic function that evaluates same-brand economy pack sizes (e.g. 5kg vs 1kg basmati) that lower the unit price (₹/kg) while strictly adhering to remaining mandate limits and brand deny lists. It's symmetric and provable."*
 
+---
+
+### Q9: "Can an external agent mint its own spending mandate via your MCP server?"
+**Answer:**  
+*"Never. The MCP server (`src/mcp/server.ts`) is strictly an execution and query adapter over pre-authorized policies. A spending mandate MUST already exist, created through the authenticated human UI. An external agent can only propose carts against an existing mandate ID; it possesses zero authority to mint or alter policies."*
+
+---
+
+### Q10: "How does SafeBuy address merchant monetization (Option A) beyond buyer protection?"
+**Answer:**  
+*"We implemented the emerging x402 HTTP monetization standard (`GET /api/catalog/premium` -> `402 Payment Required`). Agents querying priority wholesale inventory and bulk pricing pay a ₹2 micro-fee via a real Razorpay Order. Upon settlement (`POST /api/x402/settle`), our server issues a session-bound 15-minute access token. This gives merchants a direct revenue stream from AI agents."*
 
 ---
 
@@ -80,4 +91,4 @@ Our Bounded Upsell engine is a pure deterministic function that evaluates same-b
 1. **SafeBuy Web App** running on `localhost:8080`.
 2. **Razorpay Dashboard in Test Mode** showing real Orders and Payments.
 3. **Audit Tab** ready to click "Verify Audit Chain".
-4. **Terminal** ready to run `npm run test:unit` (16/16 tests passing).
+4. **Terminal** ready to run `npm run test:unit` (29/29 tests passing).

@@ -28,6 +28,8 @@ We built a dual-layer commerce and payment spine:
   - Token-level Deterministic Guardrail (`packTokens`, `excludeTokens`, brand limits, price ceilings).
   - Deterministic Bounded Upsell Engine (unit-price optimization suggestions strictly bounded by policy limits).
   - AP2/ACP-compliant Machine Discovery Endpoint (`GET /.well-known/agent-catalog.json` and `GET /api/catalog/skus`).
+  - Model Context Protocol (MCP) Server (`src/mcp/server.ts`) exporting 6 standard agent tools for external LLMs (Claude Desktop, etc.).
+  - x402-Pattern Premium Wholesale Monetization (`GET /api/catalog/premium` -> 402 challenge, `POST /api/x402/settle` -> short-lived access token).
   - Standalone External Third-Party Agent Script (`scripts/external-agent-demo.ts`).
   - Razorpay Orders API (`POST /v1/orders`) with idempotency headers.
   - Razorpay Checkout.js with mandatory `order_id`.

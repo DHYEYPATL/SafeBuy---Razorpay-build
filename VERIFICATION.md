@@ -11,7 +11,7 @@ Execute in project root:
 # 1. Typecheck: Zero compiler errors
 npm run typecheck
 
-# 2. Automated Unit Tests: 22/22 tests passing
+# 2. Automated Unit Tests: 29/29 tests passing
 npm run test:unit
 
 # 3. Third-Party Agent Discovery Demonstration (Zero SafeBuy internal imports)
@@ -33,20 +33,27 @@ ok 7 - Guardrail: blocks on denied brand
 ok 8 - Hash Chain: creates deterministic SHA-256 hashes
 ok 9 - Hash Chain: validates sequential unbroken chain
 ok 10 - Hash Chain: detects tampering and invalid prevHash
-ok 11 - MerchantOrder: initializes in reserved state with stock hold
-ok 12 - PreDebitNotice: creates valid notice record with future execution threshold
-ok 13 - PlanCart: picks lowest price matching SKU based on packTokens
-ok 14 - PlanCart: asks clarification when budget is lower than any available SKU
-ok 15 - PlanCart: respects excludeSkus during stock race recovery
-ok 16 - Signature: verifies valid Razorpay Checkout HMAC signature
-ok 17 - Signature: rejects forged or mismatched Checkout signature
-ok 18 - Signature: verifies valid Razorpay webhook raw body signature
-ok 19 - Upsell: surfaces 5kg economy pack with unit-price savings within mandate limit
-ok 20 - Upsell: rejects candidate if total price exceeds remaining mandate cap
-ok 21 - Upsell: rejects candidate if total price exceeds user explicit prompt budget
-ok 22 - Upsell: rejects candidate if brand is denied in policy
-1..22
-# tests 22, pass 22, fail 0
+ok 11 - MCP: tools list contains all 6 core agent tools
+ok 12 - MCP: search_catalog returns structured SKU list matching tokens
+ok 13 - MCP: propose_purchase succeeds for valid intent within mandate
+ok 14 - MCP: adversarial intent string cannot bypass deterministic guardrail (Edge Case 9)
+ok 15 - MCP: rejects propose_purchase if mandate does not exist (cannot mint mandates)
+ok 16 - MerchantOrder: initializes in reserved state with stock hold
+ok 17 - PreDebitNotice: creates valid notice record with future execution threshold
+ok 18 - PlanCart: picks lowest price matching SKU based on packTokens
+ok 19 - PlanCart: asks clarification when budget is lower than any available SKU
+ok 20 - PlanCart: respects excludeSkus during stock race recovery
+ok 21 - Signature: verifies valid Razorpay Checkout HMAC signature
+ok 22 - Signature: rejects forged or mismatched Checkout signature
+ok 23 - Signature: verifies valid Razorpay webhook raw body signature
+ok 24 - Upsell: surfaces 5kg economy pack with unit-price savings within mandate limit
+ok 25 - Upsell: rejects candidate if total price exceeds remaining mandate cap
+ok 26 - Upsell: rejects candidate if total price exceeds user explicit prompt budget
+ok 27 - Upsell: rejects candidate if brand is denied in policy
+ok 28 - x402: returns 402 challenge with valid orderId and amount
+ok 29 - x402: issues short-lived token upon settlement and validates token
+1..29
+# tests 29, pass 29, fail 0
 ```
 
 ---

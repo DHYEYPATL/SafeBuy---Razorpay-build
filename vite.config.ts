@@ -284,6 +284,67 @@ function agentCatalogPlugin(): Plugin {
             return;
           }
 
+          // 3. x402 Premium Wholesale Catalog: /api/catalog/premium
+          if (pathOnly === "/api/catalog/premium") {
+            const x402Mod = (await server.ssrLoadModule("/src/lib/safebuy/x402.ts")) as typeof import("./src/lib/safebuy/x402");
+            const authHeader = (req.headers["x-payment-token"] as string) || (req.headers.authorization as string) || "";
+            const isValid = x402Mod.validateX402Token(authHeader);
+
+            if (!isValid) {
+              const challenge = x402Mod.generateX402Challenge();
+              res.statusCode = 402;
+              res.setHeader("content-type", "application/json");
+              res.setHeader("access-control-allow-origin", "*");
+              res.end(
+                JSON.stringify({
+                  ok: false,
+                  status: 402,
+                  error: "PaymentRequired",
+                  message: "HTTP 402 Payment Required: Premium wholesale & priority stock catalog requires ₹2 micro-fee.",
+                  challenge,
+                }),
+              );
+              return;
+            }
+
+            res.statusCode = 200;
+            res.setHeader("content-type", "application/json");
+            res.setHeader("access-control-allow-origin", "*");
+            res.end(
+              JSON.stringify({
+                ok: true,
+                status: 200,
+                tier: "premium_wholesale",
+                count: x402Mod.PREMIUM_CATALOG.length,
+                items: x402Mod.PREMIUM_CATALOG,
+              }),
+            );
+            return;
+          }
+
+          // 4. x402 Settlement Endpoint: /api/x402/settle
+          if (pathOnly === "/api/x402/settle" && (req.method ?? "").toUpperCase() === "POST") {
+            const chunks: Buffer[] = [];
+            for await (const chunk of req) {
+              chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+            }
+            const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+            const x402Mod = (await server.ssrLoadModule("/src/lib/safebuy/x402.ts")) as typeof import("./src/lib/safebuy/x402");
+
+            const result = x402Mod.verifyAndIssueX402Token({
+              orderId: String(body.orderId || ""),
+              paymentId: String(body.paymentId || ""),
+              signature: body.signature ? String(body.signature) : null,
+              sessionId: body.sessionId ? String(body.sessionId) : "agent_default",
+            });
+
+            res.statusCode = result.ok ? 200 : 400;
+            res.setHeader("content-type", "application/json");
+            res.setHeader("access-control-allow-origin", "*");
+            res.end(JSON.stringify(result));
+            return;
+          }
+
           next();
         } catch (err) {
           console.error("[app-builder] agent-catalog error:", err);
