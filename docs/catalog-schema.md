@@ -1,8 +1,9 @@
 # SafeBuy — Agent-Readable Merchant Catalog Schema
 
 SafeBuy exposes an AP2/ACP-compliant machine-readable catalog discovery schema for third-party autonomous AI buyers at:
-- **Discovery Root:** `GET /.well-known/agent-catalog.json`
-- **SKU Metadata Endpoint:** `GET /api/catalog/skus`
+- **Discovery Manifest:** `GET /.well-known/agent-catalog.json` (served statically from `public/.well-known/agent-catalog.json`)
+- **SKU Metadata Endpoint:** `GET /api/catalog/skus.json` (served statically from `public/api/catalog/skus.json`)
+- **Programmatic MCP Query Interface:** `search_catalog` tool exposed via Model Context Protocol stdio server (`src/mcp/server.ts`) and direct module (`src/lib/safebuy/catalog.ts`).
 
 ---
 

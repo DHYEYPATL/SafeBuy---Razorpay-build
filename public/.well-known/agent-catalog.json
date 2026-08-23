@@ -1,0 +1,140 @@
+{
+  "merchant": {
+    "id": "nila-kirana",
+    "name": "Nila Kirana Store",
+    "vpa": "nilakirana@icici",
+    "city": "Bengaluru",
+    "currency": "INR",
+    "catalogVersion": "2026-08-23",
+    "note": "Synthetic stand-in merchant catalog for SafeBuy Track 01"
+  },
+  "discoveryProtocol": "AP2/ACP-Discovery-v1",
+  "version": "2026-08-23",
+  "currency": "INR",
+  "endpoints": {
+    "catalog": "/.well-known/agent-catalog.json",
+    "skus": "/api/catalog/skus.json",
+    "mcpServer": "src/mcp/server.ts"
+  },
+  "skus": [
+    {
+      "sku": "RICE-BAS-1KG",
+      "name": "Aged Basmati Rice 1 kg",
+      "brand": "India Gate",
+      "category": "grains",
+      "unitPricePaise": 14200,
+      "unitPriceRupees": 142,
+      "unit": "1 kg",
+      "packTokens": ["basmati", "rice", "1kg", "long grain", "aged"],
+      "stock": 18,
+      "description": "Long-grain aged basmati, everyday cooking."
+    },
+    {
+      "sku": "RICE-BAS-5KG",
+      "name": "Aged Basmati Rice 5 kg (Economy Pack)",
+      "brand": "India Gate",
+      "category": "grains",
+      "unitPricePaise": 62500,
+      "unitPriceRupees": 625,
+      "unit": "5 kg",
+      "packTokens": ["basmati", "rice", "5kg", "bulk", "economy"],
+      "stock": 10,
+      "description": "Long-grain aged basmati in bulk economy pack (₹125/kg)."
+    },
+    {
+      "sku": "RICE-SON-5KG",
+      "name": "Sona Masoori 5 kg",
+      "brand": "Lal Qilla",
+      "category": "grains",
+      "unitPricePaise": 38900,
+      "unitPriceRupees": 389,
+      "unit": "5 kg",
+      "packTokens": ["sona masoori", "rice", "5kg", "south indian"],
+      "stock": 9,
+      "description": "Light everyday rice, south Indian staple."
+    },
+    {
+      "sku": "ATA-WHL-5KG",
+      "name": "Whole Wheat Atta 5 kg",
+      "brand": "Aashirvaad",
+      "category": "grains",
+      "unitPricePaise": 27500,
+      "unitPriceRupees": 275,
+      "unit": "5 kg",
+      "packTokens": ["atta", "wheat", "flour", "5kg", "chakki"],
+      "stock": 14,
+      "description": "Chakki atta for rotis."
+    },
+    {
+      "sku": "DAL-TOO-1KG",
+      "name": "Toor Dal 1 kg",
+      "brand": "Tata Sampann",
+      "category": "pulses",
+      "unitPricePaise": 16800,
+      "unitPriceRupees": 168,
+      "unit": "1 kg",
+      "packTokens": ["toor", "dal", "pulses", "1kg", "unpolished"],
+      "stock": 22,
+      "description": "Unpolished toor dal."
+    },
+    {
+      "sku": "DAL-MOO-500",
+      "name": "Moong Dal 500 g",
+      "brand": "Organic Tattva",
+      "category": "pulses",
+      "unitPricePaise": 9200,
+      "unitPriceRupees": 92,
+      "unit": "500 g",
+      "packTokens": ["moong", "dal", "organic", "500g", "yellow"],
+      "stock": 16,
+      "description": "Split yellow moong."
+    },
+    {
+      "sku": "SPC-TUR-200",
+      "name": "Turmeric Powder 200 g",
+      "brand": "Everest",
+      "category": "spices",
+      "unitPricePaise": 4800,
+      "unitPriceRupees": 48,
+      "unit": "200 g",
+      "packTokens": ["turmeric", "haldi", "spices", "200g"],
+      "stock": 30,
+      "description": "Pure ground turmeric."
+    },
+    {
+      "sku": "OIL-MUS-1L",
+      "name": "Cold Pressed Mustard Oil 1 L",
+      "brand": "Fortune",
+      "category": "oil",
+      "unitPricePaise": 17500,
+      "unitPriceRupees": 175,
+      "unit": "1 L",
+      "packTokens": ["mustard", "oil", "sarson", "1l", "cold pressed"],
+      "stock": 12,
+      "description": "Kachi ghani mustard oil for cooking."
+    },
+    {
+      "sku": "DRY-MILK-1L",
+      "name": "Full Cream Milk 1 L",
+      "brand": "Amul Taaza",
+      "category": "dairy",
+      "unitPricePaise": 6600,
+      "unitPriceRupees": 66,
+      "unit": "1 L",
+      "packTokens": ["milk", "amul", "dairy", "1l", "full cream"],
+      "stock": 25,
+      "description": "Pasteurized homogenized full cream milk."
+    }
+  ],
+  "items": [
+    { "sku": "RICE-BAS-1KG", "name": "Aged Basmati Rice 1 kg", "pricePaise": 14200, "stock": 18 },
+    { "sku": "RICE-BAS-5KG", "name": "Aged Basmati Rice 5 kg (Economy Pack)", "pricePaise": 62500, "stock": 10 },
+    { "sku": "RICE-SON-5KG", "name": "Sona Masoori 5 kg", "pricePaise": 38900, "stock": 9 },
+    { "sku": "ATA-WHL-5KG", "name": "Whole Wheat Atta 5 kg", "pricePaise": 27500, "stock": 14 },
+    { "sku": "DAL-TOO-1KG", "name": "Toor Dal 1 kg", "pricePaise": 16800, "stock": 22 },
+    { "sku": "DAL-MOO-500", "name": "Moong Dal 500 g", "pricePaise": 9200, "stock": 16 },
+    { "sku": "SPC-TUR-200", "name": "Turmeric Powder 200 g", "pricePaise": 4800, "stock": 30 },
+    { "sku": "OIL-MUS-1L", "name": "Cold Pressed Mustard Oil 1 L", "pricePaise": 17500, "stock": 12 },
+    { "sku": "DRY-MILK-1L", "name": "Full Cream Milk 1 L", "pricePaise": 6600, "stock": 25 }
+  ]
+}

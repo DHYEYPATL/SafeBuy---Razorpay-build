@@ -1,0 +1,16 @@
+{
+  "status": "success",
+  "count": 9,
+  "merchantId": "nila-kirana",
+  "items": [
+    { "sku": "RICE-BAS-1KG", "name": "Aged Basmati Rice 1 kg", "brand": "India Gate", "category": "grains", "pricePaise": 14200, "stock": 18 },
+    { "sku": "RICE-BAS-5KG", "name": "Aged Basmati Rice 5 kg (Economy Pack)", "brand": "India Gate", "category": "grains", "pricePaise": 62500, "stock": 10 },
+    { "sku": "RICE-SON-5KG", "name": "Sona Masoori 5 kg", "brand": "Lal Qilla", "category": "grains", "pricePaise": 38900, "stock": 9 },
+    { "sku": "ATA-WHL-5KG", "name": "Whole Wheat Atta 5 kg", "brand": "Aashirvaad", "category": "grains", "pricePaise": 27500, "stock": 14 },
+    { "sku": "DAL-TOO-1KG", "name": "Toor Dal 1 kg", "brand": "Tata Sampann", "category": "pulses", "pricePaise": 16800, "stock": 22 },
+    { "sku": "DAL-MOO-500", "name": "Moong Dal 500 g", "brand": "Organic Tattva", "category": "pulses", "pricePaise": 9200, "stock": 16 },
+    { "sku": "SPC-TUR-200", "name": "Turmeric Powder 200 g", "brand": "Everest", "category": "spices", "pricePaise": 4800, "stock": 30 },
+    { "sku": "OIL-MUS-1L", "name": "Cold Pressed Mustard Oil 1 L", "brand": "Fortune", "category": "oil", "pricePaise": 17500, "stock": 12 },
+    { "sku": "DRY-MILK-1L", "name": "Full Cream Milk 1 L", "brand": "Amul Taaza", "category": "dairy", "pricePaise": 6600, "stock": 25 }
+  ]
+}
