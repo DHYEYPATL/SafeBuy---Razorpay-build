@@ -656,6 +656,7 @@ function AgentsPanel() {
   const [agentsList, setAgentsList] = useState<AgentIdentity[]>([]);
   const [newOpName, setNewOpName] = useState("");
   const [newActingFor, setNewActingFor] = useState("");
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     setAgentsList(listRegisteredAgents());
@@ -666,16 +667,19 @@ function AgentsPanel() {
 
   function handleRegister(e: React.FormEvent) {
     e.preventDefault();
-    if (!newOpName.trim()) return;
+    const name = newOpName.trim();
+    if (!name) return;
     const pubKey = `pub_ed25519_${Math.random().toString(36).substring(2, 10)}`;
-    registerAgentIdentity({
+    const registered = registerAgentIdentity({
       publicKey: pubKey,
-      operatorName: newOpName.trim(),
+      operatorName: name,
       actingFor: newActingFor.trim() || null,
     });
     setNewOpName("");
     setNewActingFor("");
     setAgentsList(listRegisteredAgents());
+    setSuccessMsg(`✅ Registered '${registered.operatorName}' (${registered.agentId}) with verified key.`);
+    setTimeout(() => setSuccessMsg(null), 5000);
   }
 
   return (
@@ -816,6 +820,11 @@ function AgentsPanel() {
               <PlusCircle className="mr-1.5 size-3.5" /> Register Sub-Agent
             </Button>
           </div>
+          {successMsg && (
+            <p className="mt-2.5 rounded bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 text-xs font-mono text-emerald-300">
+              {successMsg}
+            </p>
+          )}
         </form>
       </section>
     </div>

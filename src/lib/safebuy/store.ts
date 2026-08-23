@@ -1203,17 +1203,31 @@ export const useSafeBuy = create<SafeBuyState>()(
 
       applyCampaign: async (offer) => {
         const mandate = get().mandate;
-        if (!mandate || mandate.status !== "active") return;
+        if (!mandate || mandate.status !== "active") {
+          set({
+            chat: [
+              ...get().chat,
+              {
+                id: newId("msg"),
+                role: "agent",
+                ts: nowIso(),
+                text: "⚠️ Policy required: Please establish an active spending policy mandate first before claiming promotional bundles.",
+              },
+            ],
+          });
+          return;
+        }
+
         const cid = newId("cor");
         const cart = buildCampaignCart(offer);
         const intent: StructuredIntent = {
           maxAmountPaise: cart.totalPaise,
-          categories: ["grains", "oil", "pulses"],
+          categories: [...new Set(cart.lines.map((l) => l.category))],
           brandsAllow: [],
           brandsDeny: [],
-          maxQuantityPerItem: 2,
+          maxQuantityPerItem: 5,
           priceCeilingPerItemPaise: null,
-          packTokens: ["campaign", "bundle"],
+          packTokens: [],
           excludeTokens: [],
           qty: 1,
           packSizeHint: null,
@@ -1235,6 +1249,17 @@ export const useSafeBuy = create<SafeBuyState>()(
             layer: "live",
             explain: `Campaign blocked by semantic guardrail: ${guardrailResult.detail}`,
             payload: { code: guardrailResult.code, cart },
+          });
+          set({
+            chat: [
+              ...get().chat,
+              {
+                id: newId("msg"),
+                role: "agent",
+                ts: nowIso(),
+                text: `❌ Campaign Bundle Blocked: ${guardrailResult.detail}`,
+              },
+            ],
           });
           return;
         }
@@ -1284,19 +1309,7 @@ export const useSafeBuy = create<SafeBuyState>()(
           correlationId: cid,
           mandateId: mandate.id,
           cart,
-          intent: {
-            maxAmountPaise: cart.totalPaise,
-            categories: ["grains", "oil"],
-            brandsAllow: [],
-            brandsDeny: [],
-            maxQuantityPerItem: 2,
-            priceCeilingPerItemPaise: null,
-            packTokens: ["campaign", "bundle"],
-            excludeTokens: [],
-            qty: 1,
-            packSizeHint: null,
-            queryText: offer.name,
-          },
+          intent,
           phase: "notify",
           failure: "none",
           noticeId,
@@ -1314,9 +1327,11 @@ export const useSafeBuy = create<SafeBuyState>()(
         };
 
         set({
-          phase: "notify",
+          phase: "window",
+          correlationId: cid,
           pendingAttemptId: attempt.id,
           pendingCart: cart,
+          pendingIntent: intent,
           activeCampaign: null,
           attempts: [...get().attempts, attempt],
           notices: [...get().notices, notice],
