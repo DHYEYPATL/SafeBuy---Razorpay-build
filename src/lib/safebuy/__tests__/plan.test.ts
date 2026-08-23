@@ -83,3 +83,27 @@ test("PlanCart: respects excludeSkus during stock race recovery", () => {
   assert.equal(cart.lines.length, 1);
   assert.notEqual(cart.lines[0]?.sku, "RICE-BAS-1KG");
 });
+
+test("PlanCart: plans combined multi-item basket from multi-item prompt", () => {
+  const intent: StructuredIntent = {
+    maxAmountPaise: 100000,
+    categories: ["grains", "pulses"],
+    brandsAllow: [],
+    brandsDeny: [],
+    maxQuantityPerItem: 2,
+    priceCeilingPerItemPaise: 50000,
+    packTokens: ["basmati", "toor", "dal"],
+    excludeTokens: [],
+    qty: 1,
+    packSizeHint: "1kg",
+    queryText: "Buy 1 kg basmati rice and 1 kg toor dal",
+  };
+
+  const cart = planCart(mockMandate, intent);
+  assert.equal(cart.lines.length, 2);
+  const skus = cart.lines.map((l) => l.sku);
+  assert.ok(skus.includes("RICE-BAS-1KG"));
+  assert.ok(skus.includes("DAL-TOO-1KG"));
+  assert.equal(cart.totalPaise, 14200 + 16800);
+});
+

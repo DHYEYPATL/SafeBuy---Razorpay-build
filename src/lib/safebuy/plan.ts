@@ -1,4 +1,5 @@
 import { CATALOG, getItem } from "./catalog";
+import { parseIntentDeterministic } from "./parse-intent";
 import {
   MERCHANT_ID,
   MERCHANT_NAME,
@@ -82,6 +83,63 @@ export function planCart(
     };
   }
 
+  // 1. Multi-item prompt parsing (e.g., "1 kg basmati and 1 kg toor dal and 1L mustard oil")
+  const rawText = intent.queryText || "";
+  // Split on commas, "and", "with", "+" while preserving sub-clause meaning
+  const subClauses = rawText
+    .split(/,|\band\b|\bwith\b|\+/i)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 2 && !/^(please|buy|get|need|want|add)$/i.test(s));
+
+  if (subClauses.length > 1) {
+    const lines: CartLine[] = [];
+    let total = 0;
+    const usedSkus: string[] = [...excludeSkus];
+
+    for (const clause of subClauses) {
+      const subIntent = parseIntentDeterministic(clause);
+      if (intent.maxAmountPaise && !subIntent.maxAmountPaise) {
+        subIntent.maxAmountPaise = intent.maxAmountPaise;
+      }
+      const candidates = CATALOG.filter((i) => matches(i, mandate, subIntent, usedSkus, stockOverride)).sort(
+        (a, b) => {
+          let scoreA = 0;
+          let scoreB = 0;
+          if (subIntent.packSizeHint) {
+            if (a.unit.toLowerCase().replace(/\s/g, "").includes(subIntent.packSizeHint)) scoreA += 100;
+            if (b.unit.toLowerCase().replace(/\s/g, "").includes(subIntent.packSizeHint)) scoreB += 100;
+          }
+          if (scoreA !== scoreB) return scoreB - scoreA;
+          return a.pricePaise - b.pricePaise;
+        },
+      );
+
+      const matchedItem = candidates[0];
+      if (matchedItem) {
+        const liveStock = itemStock(matchedItem, stockOverride);
+        const q = Math.min(subIntent.qty ?? 1, liveStock, mandate.maxQuantityPerItem);
+        if (q > 0) {
+          const line = toLine(matchedItem, q);
+          lines.push(line);
+          total += line.linePaise;
+          usedSkus.push(matchedItem.sku);
+        }
+      }
+    }
+
+    if (lines.length > 1) {
+      const names = lines.map((l) => `${l.name} × ${l.quantity}`).join(", ");
+      return {
+        lines,
+        totalPaise: total,
+        merchantId: MERCHANT_ID,
+        merchantName: MERCHANT_NAME,
+        reason: `Matched ${lines.length} items for multi-item basket: ${names}.`,
+      };
+    }
+  }
+
+  // 2. Single-item standard planning
   const qty = Math.min(intent.qty ?? intent.maxQuantityPerItem ?? 1, mandate.maxQuantityPerItem);
 
   // Score candidates: give priority to exact unit/packSize matches (e.g. 1kg vs 5kg)
@@ -132,7 +190,6 @@ export function planCart(
     if (q <= 0) continue;
     const line = toLine(item, q);
     if (total + line.linePaise > budget) continue;
-    if (lines.length >= 2) break;
     lines.push(line);
     total += line.linePaise;
     if (intent.categories.length <= 1) break;

@@ -534,17 +534,68 @@ function BuyPanel({ onNeedMandate }: { onNeedMandate: () => void }) {
             ))
           )}
           {pending && pending.lines.length > 0 ? (
-            <div className="rounded-[var(--radius-md)] border border-border bg-elevated p-3 text-sm">
-              <p className="text-xs uppercase tracking-wider text-subtle">Candidate Cart</p>
-              {pending.lines.map((l) => (
-                <div key={l.sku} className="mt-1 flex justify-between gap-2">
-                  <span>
-                    {l.name} × {l.quantity}
-                  </span>
-                  <span className="font-mono tabular-nums">{paiseToInr(l.linePaise)}</span>
+            <div className="rounded-[var(--radius-md)] border border-primary/40 bg-elevated p-3.5 text-sm shadow-sm">
+              <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+                  <ShoppingBag className="size-3.5 text-primary" /> Candidate Basket ({pending.lines.length} item{pending.lines.length > 1 ? "s" : ""})
+                </span>
+                <span className="font-mono text-sm font-bold text-foreground">{paiseToInr(pending.totalPaise)}</span>
+              </div>
+              <div className="mt-2.5 space-y-1.5 text-xs">
+                {pending.lines.map((l) => (
+                  <div key={l.sku} className="flex justify-between gap-2 text-muted">
+                    <span className="text-foreground font-medium">
+                      {l.name} <span className="text-subtle font-mono">× {l.quantity}</span>
+                    </span>
+                    <span className="font-mono tabular-nums text-foreground">{paiseToInr(l.linePaise)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5">
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    onClick={() => void useSafeBuy.getState().proceedCandidateCart()}
+                    disabled={busy || isExecuting}
+                    className="h-auto py-1 px-2.5 text-xs"
+                  >
+                    ⚡ Proceed to Checkout ({paiseToInr(pending.totalPaise)})
+                  </Button>
+                  <button
+                    onClick={() => useSafeBuy.getState().clearCandidateCart()}
+                    disabled={busy || isExecuting}
+                    className="text-xs text-muted hover:text-rose-400 px-2 py-1"
+                  >
+                    Clear
+                  </button>
                 </div>
-              ))}
-              <p className="mt-2 text-xs text-muted">{pending.reason}</p>
+                <span className="text-[11px] text-subtle">
+                  Mandate remaining: {mandate ? paiseToInr(Math.max(0, mandate.remainingPaise - pending.totalPaise)) : "₹0"}
+                </span>
+              </div>
+
+              {/* What else do you want to buy? Quick additions */}
+              <div className="mt-3 rounded-[var(--radius-sm)] border border-border/50 bg-surface/50 p-2.5">
+                <p className="text-[11px] font-medium text-subtle">➕ What else would you like to add?</p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {[
+                    { label: "+ 1 kg Toor Dal", query: "Add 1 kg toor dal" },
+                    { label: "+ 1 L Mustard Oil", query: "Add 1 L mustard oil" },
+                    { label: "+ 500g Moong Dal", query: "Add 500g moong dal" },
+                    { label: "+ 200g Turmeric", query: "Add 200g turmeric" },
+                    { label: "+ 1 L Milk", query: "Add 1 L milk" },
+                  ].map((chip) => (
+                    <button
+                      key={chip.label}
+                      onClick={() => void send(chip.query)}
+                      disabled={busy || isExecuting}
+                      className="rounded border border-border bg-elevated px-2 py-0.5 text-[11px] text-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : null}
           {intent ? (

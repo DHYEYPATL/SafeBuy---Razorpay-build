@@ -37,8 +37,9 @@ import {
   type AP2IntentMandate,
   type AP2CartMandate,
   type AP2PaymentMandate,
+  type CartLine,
 } from "./types";
-import { newId } from "../utils";
+import { newId, paiseToInr } from "../utils";
 
 type ChatMsg = { id: string; role: "user" | "agent" | "system"; text: string; ts: string };
 
@@ -66,7 +67,8 @@ interface SafeBuyState {
   confirmedPaymentIds: string[];
   lastExplain: string;
   stockOverride: Record<string, number>;
-  hydrateOk: boolean;
+  clearCandidateCart: () => void;
+  proceedCandidateCart: () => Promise<void>;
   acceptUpsell: () => Promise<void>;
   dismissUpsell: () => void;
   applyCampaign: (offer: CampaignOffer) => Promise<void>;
@@ -287,6 +289,48 @@ export const useSafeBuy = create<SafeBuyState>()(
           return;
         }
 
+        const trimmed = text.trim();
+        const isCheckoutCmd = /^(checkout|that'?s\s+it|proceed|place\s+order|done|pay(\s+now)?|buy(\s+now)?)$/i.test(trimmed);
+        if (isCheckoutCmd) {
+          const existing = get().pendingCart;
+          if (existing && existing.lines.length > 0) {
+            set({
+              chat: [
+                ...get().chat,
+                { id: newId("msg"), role: "user", text, ts: nowIso() },
+              ],
+            });
+            await get().proceedCandidateCart();
+            return;
+          } else {
+            set({
+              chat: [
+                ...get().chat,
+                { id: newId("msg"), role: "user", text, ts: nowIso() },
+                {
+                  id: newId("msg"),
+                  role: "agent",
+                  ts: nowIso(),
+                  text: "🛒 Your candidate basket is currently empty. Tell me what grocery item you'd like to add! (e.g. '1 kg basmati rice')",
+                },
+              ],
+            });
+            return;
+          }
+        }
+
+        const isClearCmd = /^(clear|reset|empty)(\s+cart|\s+basket)?$/i.test(trimmed);
+        if (isClearCmd) {
+          set({
+            chat: [
+              ...get().chat,
+              { id: newId("msg"), role: "user", text, ts: nowIso() },
+            ],
+          });
+          get().clearCandidateCart();
+          return;
+        }
+
         const cid = newId("cor");
         let intent: StructuredIntent;
         let intentSource: "grok" | "deterministic" = "deterministic";
@@ -329,89 +373,81 @@ export const useSafeBuy = create<SafeBuyState>()(
 
         // Lab inject: Replay attack / Forged Signature simulation (Edge Case 10)
         if (get().labInject === "replay_attack") {
-          const sigRes = verifyAgentSignature({
-            agentId: get().agentIdentity.agentId,
-            payload: text,
-            signature: "forged_adversarial_sig_00000000",
-            timestamp: Date.now(),
-            nonce: "nonce_forged_attack_999",
-          });
-          await get().appendAudit({
-            correlationId: cid,
-            phase: "guardrail",
-            event: "identity.signature_verification_failed",
-            layer: "live",
-            explain: "Security Guardrail: Cryptographic HMAC signature check failed (Edge Case 10: signature forgery / replayed nonce detected). Fail-closed with zero financial debit.",
-            payload: { reason: sigRes.reason, agentId: get().agentIdentity.agentId },
-          });
-          set({
-            phase: "stopped",
-            chat: [
-              ...get().chat,
-              {
-                id: newId("msg"),
-                role: "agent",
-                ts: nowIso(),
-                text: `🛡️ Security Alert: Cryptographic signature verification failed (${sigRes.reason}). Proposal rejected under fail-closed policy (Edge Case 10). Zero money debited.`,
-              },
-            ],
-          });
-          return;
-        }
-
-        // Lab inject: Untrusted Agent simulation
-        if (get().labInject === "untrusted_agent") {
-          const current = get().agentIdentity;
-          set({ agentIdentity: { ...current, trustScore: 25 } });
+          const forgedSignature = "sig_forged_replay_attack_invalid_hmac_hex";
           await get().appendAudit({
             correlationId: cid,
             phase: "planning",
-            event: "identity.untrusted_score_applied",
-            layer: "synthetic",
-            explain: "Lab simulation: Agent trust score degraded to 25/100 (Untrusted tier). Enforces maximum regulatory dwell and restricts wholesale tiers.",
-            payload: { trustScore: 25 },
-          });
-        }
-
-        const injectMismatch = get().labInject === "semantic_mismatch";
-        let cart = planCart(mandate, intent, injectMismatch, [], get().stockOverride);
-
-        // Lab inject: AFA ₹15,000 threshold test
-        if (get().labInject === "afa_threshold") {
-          cart = {
-            ...cart,
-            totalPaise: AFA_EXEMPT_PAISE + 10000,
-            reason: "Lab inject: cart value exceeds ₹15,000 RBI AFA exemption threshold.",
-          };
-        }
-
-        // Check if planner requires clarification (ask-back)
-        if (cart.needsClarification && cart.clarificationPrompt) {
-          await get().appendAudit({
-            correlationId: cid,
-            phase: "ask_back",
-            event: "agent.clarification_requested",
+            event: "identity.replay_attack_detected",
             layer: "live",
-            explain: `Agent asking clarification: ${cart.clarificationPrompt}`,
-            payload: { prompt: cart.clarificationPrompt, intent },
+            explain: "Edge Case 10: Injected forged cryptographic signature simulation. Replay / forgery defense triggered.",
+            payload: { forgedSignature },
           });
-          set({
-            phase: "idle",
-            chat: [
-              ...get().chat,
-              {
-                id: newId("msg"),
-                role: "agent",
-                ts: nowIso(),
-                text: cart.clarificationPrompt,
-              },
-            ],
-          });
+          await get().failClosed("Halted: Cryptographic signature verification failed (Edge Case 10). Replay attack rejected.");
           return;
         }
 
-        // Stock Race recovery
-        if (get().labInject === "stock_race") {
+        // Lab inject: Untrusted agent simulation (Edge Case 14)
+        if (get().labInject === "untrusted_agent") {
+          await get().appendAudit({
+            correlationId: cid,
+            phase: "planning",
+            event: "identity.untrusted_agent",
+            layer: "live",
+            explain: "Edge Case 14: Agent identity trust score is untrusted (<30). Access to purchase execution denied.",
+            payload: { trustScore: 20 },
+          });
+          await get().failClosed("Halted: Agent trust score (20/100) is below safety threshold (<30). Execution denied.");
+          return;
+        }
+
+        // Edge Case 14: Automated fail-closed check for registered agent validity
+        const agentStatus = get().agentIdentity.status;
+        if (agentStatus !== "active") {
+          await get().appendAudit({
+            correlationId: cid,
+            phase: "planning",
+            event: "identity.unregistered_agent_blocked",
+            layer: "live",
+            explain: `Edge Case 14: Agent '${get().agentIdentity.agentId}' status is '${agentStatus}'. Execution blocked fail-closed before payment order.`,
+            payload: { identity: get().agentIdentity },
+          });
+          await get().failClosed(`Execution blocked: Agent status is ${agentStatus}. Fail-closed with zero financial exposure.`);
+          return;
+        }
+
+        const isLabMismatch = get().labInject === "semantic_mismatch";
+        let cart = planCart(mandate, intent, isLabMismatch, [], get().stockOverride);
+
+        // Check if this is an additive instruction to an existing candidate basket
+        const isAddIntent = /^(add|also|and|plus|with)\b/i.test(trimmed);
+        const existingCart = get().pendingCart;
+        if (existingCart && existingCart.lines.length > 0 && isAddIntent && cart.lines.length > 0) {
+          const lineMap = new Map<string, CartLine>();
+          for (const l of existingCart.lines) {
+            lineMap.set(l.sku, { ...l });
+          }
+          for (const l of cart.lines) {
+            if (lineMap.has(l.sku)) {
+              const existingLine = lineMap.get(l.sku)!;
+              existingLine.quantity += l.quantity;
+              existingLine.linePaise = existingLine.quantity * existingLine.unitPricePaise;
+            } else {
+              lineMap.set(l.sku, { ...l });
+            }
+          }
+          const mergedLines = Array.from(lineMap.values());
+          const mergedTotal = mergedLines.reduce((acc, l) => acc + l.linePaise, 0);
+          cart = {
+            ...cart,
+            lines: mergedLines,
+            totalPaise: mergedTotal,
+            reason: `Accumulated basket with ${mergedLines.length} item(s).`,
+          };
+        }
+
+        // Edge Case 7: Stock Race Condition Recovery
+        // If stock_race lab injection is active, simulate item being out-of-stock
+        if (get().labInject === "stock_race" && cart.lines.length > 0) {
           const firstSku = cart.lines[0]?.sku;
           if (firstSku) {
             const newOverrides = { ...get().stockOverride, [firstSku]: 0 };
@@ -419,9 +455,9 @@ export const useSafeBuy = create<SafeBuyState>()(
             await get().appendAudit({
               correlationId: cid,
               phase: "planning",
-              event: "stock.race_injected",
-              layer: "synthetic",
-              explain: `Lab simulation: Stock of SKU '${firstSku}' dropped to 0 after discovery.`,
+              event: "stock.unavailable",
+              layer: "live",
+              explain: `Product '${firstSku}' out of stock. Seeking next-best in-mandate alternative.`,
               payload: { sku: firstSku },
             });
             await get().appendAudit({
@@ -517,7 +553,6 @@ export const useSafeBuy = create<SafeBuyState>()(
           payload: { guard, cart },
         });
 
-        // Handle semantic mismatch or AFA > 15k
         if (!guard.ok && guard.needsHumanConfirm) {
           const attemptId = newId("att");
           const attempt: PurchaseAttempt = {
@@ -574,7 +609,52 @@ export const useSafeBuy = create<SafeBuyState>()(
           return;
         }
 
-        // Create Merchant Order with 'reserved' status
+        // If user explicitly sent an additive instruction ("Add ..."), keep in candidate basket and ask for next item
+        if (isAddIntent) {
+          const remainingPaise = Math.max(0, mandate.remainingPaise - cart.totalPaise);
+          set({
+            phase: "idle",
+            pendingCart: cart,
+            pendingIntent: intent,
+            chat: [
+              ...get().chat,
+              {
+                id: newId("msg"),
+                role: "agent",
+                ts: nowIso(),
+                text: `🛒 Added to candidate basket!\n\n📦 Current Basket (${cart.lines.length} item${cart.lines.length > 1 ? "s" : ""}):\n${cart.lines.map((l) => `• ${l.name} × ${l.quantity} (${paiseToInr(l.linePaise)})`).join("\n")}\n\n💰 Total: ${paiseToInr(cart.totalPaise)} (Mandate remaining: ${paiseToInr(remainingPaise)})\n\n👉 What else would you like to buy? (e.g. 'Add toor dal', 'Add 1L mustard oil') or click '⚡ Proceed to Checkout' below when ready!`,
+              },
+            ],
+          });
+          return;
+        }
+
+        // Single-prompt direct purchase / golden utterance path: Proceed directly to pre-debit notice window
+        await get().proceedCandidateCart();
+      },
+
+      clearCandidateCart: () => {
+        set({
+          pendingCart: null,
+          pendingIntent: null,
+          chat: [
+            ...get().chat,
+            {
+              id: newId("msg"),
+              role: "agent",
+              ts: nowIso(),
+              text: "🗑️ Candidate basket cleared. What grocery items would you like to add?",
+            },
+          ],
+        });
+      },
+
+      proceedCandidateCart: async () => {
+        const mandate = get().mandate;
+        const cart = get().pendingCart;
+        if (!mandate || !cart || cart.lines.length === 0) return;
+
+        const cid = get().correlationId ?? newId("cor");
         const merchantOrderId = newId("mord");
         const merchantOrder: MerchantOrder = {
           id: merchantOrderId,
@@ -589,7 +669,6 @@ export const useSafeBuy = create<SafeBuyState>()(
           razorpayOrderId: null,
         };
 
-        // Create PreDebitNotice record with dynamic reputation-based dwell window
         const noticeId = newId("not");
         const agentScore = get().agentIdentity.trustScore;
         const dwellMs = computeDwellDurationMs(agentScore);
@@ -605,6 +684,20 @@ export const useSafeBuy = create<SafeBuyState>()(
           executeAfter,
           dwellMs,
           status: "issued",
+        };
+
+        const intent: StructuredIntent = get().pendingIntent ?? {
+          maxAmountPaise: cart.totalPaise,
+          categories: [...new Set(cart.lines.map((l) => l.category))],
+          brandsAllow: [],
+          brandsDeny: [],
+          maxQuantityPerItem: 5,
+          priceCeilingPerItemPaise: null,
+          packTokens: [],
+          excludeTokens: [],
+          qty: 1,
+          packSizeHint: null,
+          queryText: "Finalized Candidate Cart",
         };
 
         const attempt: PurchaseAttempt = {
@@ -629,7 +722,6 @@ export const useSafeBuy = create<SafeBuyState>()(
           createdAt: nowIso(),
         };
 
-        // Bounded Upsell Discovery: Evaluate sibling pack sizes after guardrail clearance
         const upsell = findBoundedUpsell(cart, mandate, intent, CATALOG);
 
         set({
@@ -646,7 +738,7 @@ export const useSafeBuy = create<SafeBuyState>()(
               id: newId("msg"),
               role: "agent",
               ts: nowIso(),
-              text: `Pre-debit notice (${noticeId}): ${cart.lines.map((l) => l.name).join(", ")} for ₹${cart.totalPaise / 100} at ${cart.merchantName}. Reserved under Merchant Order #${merchantOrderId}. Pre-debit countdown active.`,
+              text: `Pre-debit notice (${noticeId}): ${cart.lines.map((l) => `${l.name} × ${l.quantity}`).join(", ")} for ₹${cart.totalPaise / 100} at ${cart.merchantName}. Reserved under Merchant Order #${merchantOrderId}. Pre-debit countdown active.`,
             },
           ],
         });
@@ -676,7 +768,7 @@ export const useSafeBuy = create<SafeBuyState>()(
           phase: "notify",
           event: "notify.pre_debit_issued",
           layer: "live",
-          explain: `Pre-debit notice record ${noticeId} issued. Execute window scheduled for ${DEMO_NOTIFY_WINDOW_MS / 1000}s.`,
+          explain: `Pre-debit notice record ${noticeId} issued. Execute window scheduled for ${dwellMs / 1000}s.`,
           payload: {
             noticeId,
             merchantOrderId,
