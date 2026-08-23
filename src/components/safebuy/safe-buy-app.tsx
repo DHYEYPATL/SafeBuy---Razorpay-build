@@ -60,10 +60,12 @@ const LABELS: { id: Tab; label: string; icon: typeof Shield }[] = [
 ];
 
 const GOLDEN_UTTERANCES = [
-  { label: "Basmati Under ₹150", text: "Buy 1 kg basmati under ₹150", desc: "Happy path" },
-  { label: "1 kg Toor Dal", text: "Get 1 kg toor dal", desc: "SKU & Category match" },
+  { label: "Multi-Item Basket", text: "Buy 1 kg basmati rice and 1 kg toor dal", desc: "Multi-item prompt" },
+  { label: "Basmati Under ₹150", text: "Buy 1 kg basmati under ₹150", desc: "Golden happy path" },
+  { label: "Conversational Add", text: "Add 1 L mustard oil", desc: "Multi-turn cart accumulation" },
+  { label: "3-Item Pantry Pack", text: "Buy 5 kg atta, 1 kg toor dal, and 200g turmeric", desc: "Multi-category basket" },
   { label: "Low Budget (< ₹50)", text: "Buy 1 kg basmati under ₹50", desc: "Triggers agent ask-back" },
-  { label: "Atta + Cadbury", text: "Get 5 kg atta with Cadbury chocolate", desc: "Deny brand block" },
+  { label: "Atta + Cadbury", text: "Get 5 kg atta with Cadbury chocolate", desc: "Brand deny list block" },
   { label: "Organic Moong 500g", text: "Buy organic moong dal 500g", desc: "Pack size & brand match" },
 ];
 

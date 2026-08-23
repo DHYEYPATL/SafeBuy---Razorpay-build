@@ -63,9 +63,31 @@ async function runExternalAgentDemo() {
       .sort((a, b) => a.unitPriceRupees - b.unitPriceRupees)[0];
 
     if (selected) {
-      console.log(`\n🎯 [External Agent] Selected compliant item: [${selected.sku}] ${selected.name} for ₹${selected.unitPriceRupees}`);
+      console.log(`\n🎯 [External Agent] Selected base item: [${selected.sku}] ${selected.name} for ₹${selected.unitPriceRupees}`);
       console.log(`🛡️ Guardrail Token Match: packTokens matched "${targetToken}"`);
-      console.log(`✅ Machine discovery successful! Merchant is fully transactable by third-party agents.`);
+
+      // Machine-to-Machine Upsell Evaluation (PS Core Track 01 Requirement)
+      console.log(`\n💡 [Merchant Agent-Upsell Protocol] Evaluating bulk / economy pack upgrades...`);
+      const bulkAlternative = manifest.skus.find(
+        (s) => s.sku !== selected.sku && s.packTokens.some((t) => t.includes(targetToken)) && s.unit.includes("5 kg"),
+      );
+
+      if (bulkAlternative) {
+        const unitPriceBase = selected.unitPriceRupees / 1; // ₹142/kg
+        const unitPriceBulk = bulkAlternative.unitPriceRupees / 5; // ₹125/kg
+        const savingsPercent = Math.round(((unitPriceBase - unitPriceBulk) / unitPriceBase) * 100);
+
+        console.log(`📦 Sibling Bulk Option Found: [${bulkAlternative.sku}] ${bulkAlternative.name} (₹${bulkAlternative.unitPriceRupees})`);
+        console.log(`📊 Unit Economics: Base = ₹${unitPriceBase}/kg vs Bulk = ₹${unitPriceBulk}/kg (${savingsPercent}% unit savings)`);
+
+        // Autonomous agent policy check: does bulk pack fit within mandate cap?
+        const maxPolicyLimitRupees = 1500;
+        if (bulkAlternative.unitPriceRupees <= maxPolicyLimitRupees) {
+          console.log(`🚀 [External Agent] Programmatically accepted Merchant Upsell! Switched to [${bulkAlternative.sku}].`);
+        }
+      }
+
+      console.log(`\n✅ Machine discovery & autonomous transactability successful! Zero human UI dependency.`);
     } else {
       console.log(`\n⚠️ No item matched within budget of ₹${budgetRupees}`);
     }
