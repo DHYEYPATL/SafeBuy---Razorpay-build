@@ -102,7 +102,8 @@ Our Bounded Upsell engine is a pure deterministic function that evaluates same-b
 ### Q13: "Why doesn't a high agent trust score shorten the Pre-Debit Notice dwell window?"
 **Answer:**  
 *"Because the pre-debit notice window exists to protect the human cardholder, not to reward the agent. An agent's good track record tells you nothing about whether the cardholder is actively paying attention right now. Reducing the notice window below the 8-second regulatory floor would erode our own safety mechanism and create a loophole in our own guardrail.  
-Instead, trust reputation translates to merchant-agent business privileges: high-trust agents earn VIP wholesale catalog pricing on the x402 rail (₹1 vs ₹2 standard) and unlock AI loyalty campaign bundles (which are strictly validated against `runGuardrail` end-to-end before order reservation). Conversely, low-trust or suspicious agents trigger elevated caution (12-second dwell) to afford the human extra reaction time."*
+Instead, trust reputation translates to merchant-agent business privileges: high-trust agents earn VIP wholesale catalog pricing on the x402 rail (₹1 vs ₹2 standard) and unlock AI loyalty campaign bundles (which are strictly validated against `runGuardrail` end-to-end before order reservation). Conversely, low-trust or suspicious agents trigger elevated caution (12-second dwell) to afford the human extra reaction time.  
+Additionally, our tier boundary architecture includes a deliberate 20-point buffer zone: freshly registered agents start at baseline 50, requiring sustained clean payment history to climb to VIP (80+), while a single honest guardrail block on a new agent does not instantly cause catastrophic demotion below the 30-point untrusted threshold."*
 
 ---
 
