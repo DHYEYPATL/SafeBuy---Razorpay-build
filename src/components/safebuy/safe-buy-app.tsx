@@ -20,6 +20,7 @@ import {
   Users,
   Award,
   Zap,
+  TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,12 +47,13 @@ import {
   type AgentIdentity,
 } from "@/lib/safebuy/identity";
 
-type Tab = "buy" | "mandate" | "orders" | "agents" | "ap2" | "audit" | "lab" | "spec";
+type Tab = "buy" | "mandate" | "orders" | "growth" | "agents" | "ap2" | "audit" | "lab" | "spec";
 
 const LABELS: { id: Tab; label: string; icon: typeof Shield }[] = [
   { id: "buy", label: "Buy", icon: ShoppingBag },
   { id: "mandate", label: "Policy", icon: KeyRound },
   { id: "orders", label: "Orders", icon: Store },
+  { id: "growth", label: "Growth", icon: TrendingUp },
   { id: "agents", label: "Agents", icon: Users },
   { id: "ap2", label: "AP2 Primitives", icon: FileCode2 },
   { id: "audit", label: "Audit", icon: ScrollText },
@@ -138,6 +140,7 @@ export function SafeBuyApp() {
         {tab === "buy" && <BuyPanel onNeedMandate={() => setTab("mandate")} />}
         {tab === "mandate" && <MandatePanel />}
         {tab === "orders" && <OrdersPanel />}
+        {tab === "growth" && <GrowthPanel />}
         {tab === "agents" && <AgentsPanel />}
         {tab === "ap2" && <AP2PrimitivesPanel />}
         {tab === "audit" && <AuditPanel />}
@@ -700,6 +703,117 @@ function OrdersPanel() {
         )}
       </div>
     </section>
+  );
+}
+
+function GrowthPanel() {
+  const merchantOrders = useSafeBuy((s) => s.merchantOrders);
+  const audit = useSafeBuy((s) => s.audit);
+
+  const paidOrders = merchantOrders.filter((mo) => mo.status === "paid");
+  const totalGmvPaise = paidOrders.reduce((sum, mo) => sum + mo.totalPaise, 0);
+  const totalGmvInr = totalGmvPaise / 100;
+  const orderCount = paidOrders.length;
+  const aovInr = orderCount > 0 ? (totalGmvInr / orderCount).toFixed(2) : "0.00";
+
+  const totalUnitsSold = paidOrders.reduce(
+    (acc, mo) => acc + mo.lines.reduce((sub, l) => sub + l.quantity, 0),
+    0,
+  );
+
+  const upsellEvents = audit.filter((a) => a.event === "upsell.surfaced" || a.event === "upsell.accepted");
+  const campaignEvents = audit.filter((a) => a.event === "campaign.activated");
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-[var(--radius-xl)] border border-border bg-surface p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-2xl">Merchant Revenue & AI Growth Metrics</h2>
+              <LayerBadge layer="live" />
+            </div>
+            <p className="mt-1 text-sm text-muted">
+              Live economic metrics derived strictly from verified Razorpay captured payments and confirmed merchant orders.
+            </p>
+          </div>
+          <Badge tone="ok">{orderCount} Captured Order{orderCount === 1 ? "" : "s"}</Badge>
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-[var(--radius-md)] border border-border bg-elevated p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-subtle">Settled GMV</p>
+            <p className="mt-1 font-mono text-2xl font-bold text-foreground">₹{totalGmvInr.toFixed(2)}</p>
+            <p className="mt-1 text-xs text-muted">Real Razorpay captured revenue</p>
+          </div>
+
+          <div className="rounded-[var(--radius-md)] border border-border bg-elevated p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-subtle">Average Order Value (AOV)</p>
+            <p className="mt-1 font-mono text-2xl font-bold text-primary">₹{aovInr}</p>
+            <p className="mt-1 text-xs text-muted">Across all agentic checkouts</p>
+          </div>
+
+          <div className="rounded-[var(--radius-md)] border border-border bg-elevated p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-subtle">Total Units Transacted</p>
+            <p className="mt-1 font-mono text-2xl font-bold text-foreground">{totalUnitsSold}</p>
+            <p className="mt-1 text-xs text-muted">Stock decremented & fulfilled</p>
+          </div>
+
+          <div className="rounded-[var(--radius-md)] border border-border bg-elevated p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-subtle">Agent Touchpoints</p>
+            <p className="mt-1 font-mono text-2xl font-bold text-emerald-400">
+              {upsellEvents.length + campaignEvents.length}
+            </p>
+            <p className="mt-1 text-xs text-muted">{upsellEvents.length} upsells · {campaignEvents.length} campaign activations</p>
+          </div>
+        </div>
+
+        {/* Breakdown table */}
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-subtle">Captured Orders Breakdown</h3>
+          <div className="mt-2 overflow-x-auto rounded-[var(--radius-md)] border border-border">
+            <table className="w-full text-left text-xs font-mono">
+              <thead className="border-b border-border bg-elevated text-subtle">
+                <tr>
+                  <th className="p-3">Order ID</th>
+                  <th className="p-3">Settlement Amount</th>
+                  <th className="p-3">Items</th>
+                  <th className="p-3">Razorpay Order ID</th>
+                  <th className="p-3">Paid At</th>
+                  <th className="p-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50 bg-surface">
+                {paidOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-4 text-center font-sans text-muted">
+                      No settled orders yet. Complete a purchase on the Buy tab to see live merchant revenue.
+                    </td>
+                  </tr>
+                ) : (
+                  [...paidOrders].reverse().map((mo) => (
+                    <tr key={mo.id}>
+                      <td className="p-3 font-semibold text-foreground">#{mo.id}</td>
+                      <td className="p-3 font-bold text-emerald-400">{paiseToInr(mo.totalPaise)}</td>
+                      <td className="p-3 font-sans text-muted">
+                        {mo.lines.map((l) => `${l.name} × ${l.quantity}`).join(", ")}
+                      </td>
+                      <td className="p-3 text-subtle">{mo.razorpayOrderId ?? "—"}</td>
+                      <td className="p-3 text-muted">
+                        {mo.paidAt ? new Date(mo.paidAt).toLocaleTimeString() : "—"}
+                      </td>
+                      <td className="p-3">
+                        <Badge tone="ok">CAPTURED</Badge>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 
