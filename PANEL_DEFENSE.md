@@ -99,8 +99,15 @@ Our Bounded Upsell engine is a pure deterministic function that evaluates same-b
 
 ---
 
+### Q13: "Why doesn't a high agent trust score shorten the Pre-Debit Notice dwell window?"
+**Answer:**  
+*"Because the pre-debit notice window exists to protect the human cardholder, not to reward the agent. An agent's good track record tells you nothing about whether the cardholder is actively paying attention right now. Reducing the notice window below the 8-second regulatory floor would erode our own safety mechanism and create a loophole in our own guardrail.  
+Instead, trust reputation translates to merchant-agent business privileges: high-trust agents earn VIP wholesale catalog pricing on the x402 rail (₹1 vs ₹2 standard) and unlock AI loyalty campaign bundles (which are strictly validated against `runGuardrail` end-to-end before order reservation). Conversely, low-trust or suspicious agents trigger elevated caution (12-second dwell) to afford the human extra reaction time."*
+
+---
+
 ## 3. What to Have Open During the Interview
 1. **SafeBuy Web App** running on `localhost:8080`.
 2. **Razorpay Dashboard in Test Mode** showing real Orders and Payments.
 3. **Audit Tab** ready to click "Verify Audit Chain".
-4. **Terminal** ready to run `npm run test:unit` (33/33 tests passing).
+4. **Terminal** ready to run `npm run test:unit` (40/40 tests passing).

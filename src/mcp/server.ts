@@ -5,7 +5,8 @@ import { planCart } from "../lib/safebuy/plan";
 import { runGuardrail } from "../lib/safebuy/guardrail";
 import { findBoundedUpsell } from "../lib/safebuy/upsell";
 import { generateX402Challenge, verifyAndIssueX402Token, validateX402Token, PREMIUM_CATALOG } from "../lib/safebuy/x402";
-import { verifyAgentSignature, lookupAgentIdentity, sanitizeOutboundPayload } from "../lib/safebuy/identity";
+import { verifyAgentSignature, lookupAgentIdentity, sanitizeOutboundPayload, computeDwellDurationMs } from "../lib/safebuy/identity";
+import { evaluateActiveCampaigns } from "../lib/safebuy/campaign";
 import type { Mandate, ProposedCart } from "../lib/safebuy/types";
 
 // In-memory mandate store for MCP caller reference (or defaults to active policy)
@@ -52,6 +53,20 @@ export const MCP_TOOLS = [
       properties: {
         mandateId: { type: "string", description: "Pre-authorized policy mandate ID (must be created via authenticated human UI)" },
         naturalLanguageIntent: { type: "string", description: "Natural language purchase request (e.g. 'Buy 1 kg basmati under ₹150')" },
+        agentId: { type: "string", description: "Optional agent identifier to apply reputation-derived dwell and pricing" },
+        signature: { type: "string", description: "Optional HMAC signature for cryptographic verification" },
+      },
+    },
+  },
+  {
+    name: "get_active_campaigns",
+    description: "Evaluate active merchant campaign offers, loyalty discounts, and reorder bundles for a mandate.",
+    inputSchema: {
+      type: "object",
+      required: ["mandateId"],
+      properties: {
+        mandateId: { type: "string", description: "Active mandate ID" },
+        agentId: { type: "string", description: "Optional calling agent ID" },
       },
     },
   },
@@ -68,11 +83,12 @@ export const MCP_TOOLS = [
   },
   {
     name: "request_premium_access",
-    description: "Request x402-pattern premium wholesale catalog access. Returns HTTP 402 challenge with Razorpay order details.",
+    description: "Request x402-pattern premium wholesale catalog access. Returns HTTP 402 challenge with Razorpay order details and trust tier pricing.",
     inputSchema: {
       type: "object",
       properties: {
-        sessionId: { type: "string", description: "Agent session identifier" },
+        sessionId: { type: "string", description: "Agent session or identity identifier" },
+        agentId: { type: "string", description: "Optional Agent ID" },
       },
     },
   },
@@ -180,14 +196,19 @@ export async function handleMcpToolCall(name: string, args: Record<string, any>)
 
       const upsell = findBoundedUpsell(cart, mandate, intent, CATALOG);
 
+      const agentId = args.agentId ? String(args.agentId) : "agent_safebuy_default";
+      const identity = lookupAgentIdentity(agentId);
+      const dwellMs = computeDwellDurationMs(identity?.trustScore ?? 50);
+
       const noticeId = `not_mcp_${Date.now()}`;
-      const executeAfter = new Date(Date.now() + 8000).toISOString();
+      const executeAfter = new Date(Date.now() + dwellMs).toISOString();
 
       return sanitizeOutboundPayload({
         success: true,
         noticeId,
         executeAfter,
-        dwellSeconds: 8,
+        dwellSeconds: Math.round(dwellMs / 1000),
+        agentTrustScore: identity?.trustScore ?? 50,
         cart: {
           lines: cart.lines,
           totalRupees: cart.totalPaise / 100,
@@ -204,6 +225,34 @@ export async function handleMcpToolCall(name: string, args: Record<string, any>)
       });
     }
 
+    case "get_active_campaigns": {
+      const mandate = activeMandates.get(args.mandateId);
+      if (!mandate) {
+        return { error: "MandateNotFound", message: `Mandate '${args.mandateId}' not found.` };
+      }
+      const agentId = args.agentId ? String(args.agentId) : "agent_safebuy_default";
+      // Evaluate active campaigns against in-memory audit history or mandate state
+      const campaign = evaluateActiveCampaigns({
+        agentId,
+        mandate,
+        auditHistory: [],
+      });
+      return {
+        active: Boolean(campaign),
+        campaign: campaign
+          ? {
+              id: campaign.id,
+              name: campaign.name,
+              badge: campaign.badge,
+              description: campaign.description,
+              savingsPercent: campaign.savingsPercent,
+              discountedTotalRupees: campaign.discountedTotalPaise / 100,
+              items: campaign.lines.map((l) => ({ name: l.name, qty: l.quantity, sku: l.sku })),
+            }
+          : null,
+      };
+    }
+
     case "confirm_purchase": {
       const noticeId = String(args.noticeId);
       const mockCheckoutOrderId = `order_rzp_${Date.now()}`;
@@ -217,7 +266,8 @@ export async function handleMcpToolCall(name: string, args: Record<string, any>)
     }
 
     case "request_premium_access": {
-      const challenge = generateX402Challenge(args.sessionId);
+      const targetId = args.agentId || args.sessionId || "agent_safebuy_default";
+      const challenge = generateX402Challenge(targetId);
       return challenge;
     }
 

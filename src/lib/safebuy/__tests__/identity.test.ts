@@ -134,3 +134,70 @@ test("Identity: outbound payload redaction never leaks private mandate ceilings 
   assert.equal(sanitized.quantity, 1);
   assert.equal(sanitized.merchantId, "nila-kirana");
 });
+
+test("Identity: mitigates trust-score gaming via volume dampening (Edge Case 11)", () => {
+  // Simulate an adversarial agent attempting to game reputation with 10 rapid micro-transactions
+  const spammedAudit: AuditRecord[] = Array.from({ length: 10 }, (_, i) => ({
+    seq: i + 1,
+    id: `aud_spam_${i}`,
+    ts: new Date().toISOString(),
+    correlationId: `cor_spam_${i}`,
+    phase: "confirmed",
+    event: "razorpay.captured",
+    layer: "live",
+    explain: "Micro transaction",
+    payload: {},
+    hash: `hash_${i}`,
+    prevHash: `prev_${i}`,
+  }));
+
+  const score = computeTrustScore("agent_safebuy_default", spammedAudit);
+  // With volume dampening: 50 + 20 (first 2) + 15 (next 3) + 5 (remaining) = 90 max bump cap
+  assert.ok(score <= 90, `Expected score <= 90 due to volume dampening, got ${score}`);
+  assert.ok(score >= 85, `Expected score >= 85, got ${score}`);
+});
+
+test("Identity: enforces actingFor accountability chain across delegated sub-agents (Edge Case 12)", () => {
+  const subAgent = registerAgentIdentity({
+    publicKey: "pub_ed25519_delegated_subagent_key",
+    operatorName: "Autonomous Pantry Refill Bot",
+    actingFor: "Customer Dhyey (User ID: usr_98765)",
+  });
+
+  assert.equal(subAgent.actingFor, "Customer Dhyey (User ID: usr_98765)");
+
+  const timestamp = Date.now();
+  const nonce = "nonce_delegation_test";
+  const payload = JSON.stringify({ action: "refill_atta" });
+  const sig = crypto
+    .createHmac("sha256", subAgent.publicKey)
+    .update(`${timestamp}:${nonce}:${payload}`)
+    .digest("hex");
+
+  const verifyResult = verifyAgentSignature({
+    agentId: subAgent.agentId,
+    payload,
+    signature: sig,
+    timestamp,
+    nonce,
+  });
+
+  assert.equal(verifyResult.ok, true);
+  assert.equal(verifyResult.identity?.actingFor, "Customer Dhyey (User ID: usr_98765)");
+});
+
+test("Identity: unregistered agent or signature failure fails closed with zero debit (Edge Case 14)", () => {
+  // 1. Unknown agent lookup fails closed
+  const unknownRes = verifyAgentSignature({
+    agentId: "agent_ghost_unregistered_9999",
+    payload: "{}",
+    signature: "sig_dummy",
+    timestamp: Date.now(),
+    nonce: "nonce_ghost",
+  });
+  assert.equal(unknownRes.ok, false);
+  assert.equal(unknownRes.reason, "UnregisteredAgent: Agent ID not found in identity registry.");
+
+  // 2. Lookup returns null
+  assert.equal(lookupAgentIdentity("agent_ghost_unregistered_9999"), null);
+});

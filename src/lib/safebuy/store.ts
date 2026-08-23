@@ -10,8 +10,15 @@ import { findBoundedUpsell, type UpsellCandidate } from "./upsell";
 import {
   lookupAgentIdentity,
   computeTrustScore,
+  computeDwellDurationMs,
+  verifyAgentSignature,
   type AgentIdentity,
 } from "./identity";
+import {
+  evaluateActiveCampaigns,
+  buildCampaignCart,
+  type CampaignOffer,
+} from "./campaign";
 import {
   AFA_EXEMPT_PAISE,
   DEMO_NOTIFY_WINDOW_MS,
@@ -51,6 +58,7 @@ interface SafeBuyState {
   pendingIntent: StructuredIntent | null;
   pendingAttemptId: string | null;
   upsellCandidate: UpsellCandidate | null;
+  activeCampaign: CampaignOffer | null;
   correlationId: string | null;
   razorpayKeyId: string;
   hasSecret: boolean;
@@ -61,6 +69,8 @@ interface SafeBuyState {
   hydrateOk: boolean;
   acceptUpsell: () => Promise<void>;
   dismissUpsell: () => void;
+  applyCampaign: (offer: CampaignOffer) => Promise<void>;
+  dismissCampaign: () => void;
   setRazorpayKeyDetails: (k: { keyId: string; hasSecret: boolean; configured: boolean }) => void;
   setLabInject: (i: LabInject) => void;
   createMandate: (m: {
@@ -137,6 +147,7 @@ export const useSafeBuy = create<SafeBuyState>()(
       pendingIntent: null,
       pendingAttemptId: null,
       upsellCandidate: null,
+      activeCampaign: null,
       correlationId: null,
       razorpayKeyId: "",
       hasSecret: false,
@@ -211,7 +222,13 @@ export const useSafeBuy = create<SafeBuyState>()(
           authorizationMethod: "simulated_registration_auth",
         };
         const cid = newId("cor");
-        set({ mandate, correlationId: cid, phase: "idle" });
+        const initialCampaign = evaluateActiveCampaigns({
+          agentId: get().agentIdentity.agentId,
+          mandate,
+          auditHistory: get().audit,
+        });
+
+        set({ mandate, correlationId: cid, phase: "idle", activeCampaign: initialCampaign });
         await get().appendAudit({
           correlationId: cid,
           phase: "idle",
@@ -309,6 +326,52 @@ export const useSafeBuy = create<SafeBuyState>()(
           explain: `Structured intent parsed (${intentSource}): packTokens=[${intent.packTokens.join(", ")}], budget=₹${(intent.maxAmountPaise ?? mandate.remainingPaise) / 100}. Guardrail will diff candidate cart against this schema.`,
           payload: { intent, source: intentSource },
         });
+
+        // Lab inject: Replay attack / Forged Signature simulation (Edge Case 10)
+        if (get().labInject === "replay_attack") {
+          const sigRes = verifyAgentSignature({
+            agentId: get().agentIdentity.agentId,
+            payload: text,
+            signature: "forged_adversarial_sig_00000000",
+            timestamp: Date.now(),
+            nonce: "nonce_forged_attack_999",
+          });
+          await get().appendAudit({
+            correlationId: cid,
+            phase: "guardrail",
+            event: "identity.signature_verification_failed",
+            layer: "live",
+            explain: "Security Guardrail: Cryptographic HMAC signature check failed (Edge Case 10: signature forgery / replayed nonce detected). Fail-closed with zero financial debit.",
+            payload: { reason: sigRes.reason, agentId: get().agentIdentity.agentId },
+          });
+          set({
+            phase: "stopped",
+            chat: [
+              ...get().chat,
+              {
+                id: newId("msg"),
+                role: "agent",
+                ts: nowIso(),
+                text: `🛡️ Security Alert: Cryptographic signature verification failed (${sigRes.reason}). Proposal rejected under fail-closed policy (Edge Case 10). Zero money debited.`,
+              },
+            ],
+          });
+          return;
+        }
+
+        // Lab inject: Untrusted Agent simulation
+        if (get().labInject === "untrusted_agent") {
+          const current = get().agentIdentity;
+          set({ agentIdentity: { ...current, trustScore: 25 } });
+          await get().appendAudit({
+            correlationId: cid,
+            phase: "planning",
+            event: "identity.untrusted_score_applied",
+            layer: "synthetic",
+            explain: "Lab simulation: Agent trust score degraded to 25/100 (Untrusted tier). Enforces maximum regulatory dwell and restricts wholesale tiers.",
+            payload: { trustScore: 25 },
+          });
+        }
 
         const injectMismatch = get().labInject === "semantic_mismatch";
         let cart = planCart(mandate, intent, injectMismatch, [], get().stockOverride);
@@ -526,9 +589,11 @@ export const useSafeBuy = create<SafeBuyState>()(
           razorpayOrderId: null,
         };
 
-        // Create PreDebitNotice record
+        // Create PreDebitNotice record with dynamic reputation-based dwell window
         const noticeId = newId("not");
-        const executeAfter = new Date(Date.now() + DEMO_NOTIFY_WINDOW_MS).toISOString();
+        const agentScore = get().agentIdentity.trustScore;
+        const dwellMs = computeDwellDurationMs(agentScore);
+        const executeAfter = new Date(Date.now() + dwellMs).toISOString();
         const notice: PreDebitNotice = {
           id: noticeId,
           attemptId: cid,
@@ -538,7 +603,7 @@ export const useSafeBuy = create<SafeBuyState>()(
           merchantName: cart.merchantName,
           issuedAt: nowIso(),
           executeAfter,
-          dwellMs: DEMO_NOTIFY_WINDOW_MS,
+          dwellMs,
           status: "issued",
         };
 
@@ -574,7 +639,7 @@ export const useSafeBuy = create<SafeBuyState>()(
           attempts: [...get().attempts, attempt],
           notices: [...get().notices, notice],
           merchantOrders: [...get().merchantOrders, merchantOrder],
-          windowMsLeft: DEMO_NOTIFY_WINDOW_MS,
+          windowMsLeft: dwellMs,
           chat: [
             ...get().chat,
             {
@@ -980,6 +1045,14 @@ export const useSafeBuy = create<SafeBuyState>()(
             : `Payment ${paymentId} verified and captured via ${source}. Mandate debited by ₹${totalPaise / 100}. Merchant Order #${attempt?.merchantOrderId ?? ""} settled.`,
           payload: { paymentId, orderId, remainingPaise: remaining, source, status },
         });
+
+        // Re-evaluate campaign offers for returning buyer
+        const nextCampaign = evaluateActiveCampaigns({
+          agentId: get().agentIdentity.agentId,
+          mandate: get().mandate,
+          auditHistory: get().audit,
+        });
+        set({ activeCampaign: nextCampaign });
       },
 
       releaseReservation: async (attemptId, reason) => {
@@ -1126,6 +1199,143 @@ export const useSafeBuy = create<SafeBuyState>()(
             payload: { upsell },
           });
         }
+      },
+
+      applyCampaign: async (offer) => {
+        const mandate = get().mandate;
+        if (!mandate || mandate.status !== "active") return;
+        const cid = newId("cor");
+        const cart = buildCampaignCart(offer);
+        const intent: StructuredIntent = {
+          maxAmountPaise: cart.totalPaise,
+          categories: ["grains", "oil", "pulses"],
+          brandsAllow: [],
+          brandsDeny: [],
+          maxQuantityPerItem: 2,
+          priceCeilingPerItemPaise: null,
+          packTokens: ["campaign", "bundle"],
+          excludeTokens: [],
+          qty: 1,
+          packSizeHint: null,
+          queryText: offer.name,
+        };
+
+        const guardrailResult = runGuardrail({
+          lines: cart.lines,
+          totalPaise: cart.totalPaise,
+          mandate,
+          intent,
+        });
+
+        if (!guardrailResult.ok) {
+          await get().appendAudit({
+            correlationId: cid,
+            phase: "planning",
+            event: "guardrail.block",
+            layer: "live",
+            explain: `Campaign blocked by semantic guardrail: ${guardrailResult.detail}`,
+            payload: { code: guardrailResult.code, cart },
+          });
+          return;
+        }
+
+        await get().appendAudit({
+          correlationId: cid,
+          phase: "planning",
+          event: "campaign.activated",
+          layer: "live",
+          explain: `Campaign Orchestrator: Activated '${offer.name}' (${offer.savingsPercent}% loyalty savings, ₹${offer.discountedTotalPaise / 100}).`,
+          payload: { campaignId: offer.id, offer },
+        });
+
+        const dwellMs = computeDwellDurationMs(get().agentIdentity.trustScore);
+        const executeAfter = new Date(Date.now() + dwellMs).toISOString();
+        const noticeId = newId("not");
+        const merchantOrderId = newId("mord");
+
+        const merchantOrder: MerchantOrder = {
+          id: merchantOrderId,
+          merchantId: cart.merchantId,
+          merchantName: cart.merchantName,
+          attemptId: cid,
+          lines: cart.lines,
+          totalPaise: cart.totalPaise,
+          status: "reserved",
+          reservedAt: nowIso(),
+          paidAt: null,
+          razorpayOrderId: null,
+        };
+
+        const notice: PreDebitNotice = {
+          id: noticeId,
+          attemptId: cid,
+          amountPaise: cart.totalPaise,
+          skus: cart.lines.map((l) => l.sku),
+          merchantId: cart.merchantId,
+          merchantName: cart.merchantName,
+          issuedAt: nowIso(),
+          executeAfter,
+          dwellMs,
+          status: "issued",
+        };
+
+        const attempt: PurchaseAttempt = {
+          id: cid,
+          correlationId: cid,
+          mandateId: mandate.id,
+          cart,
+          intent: {
+            maxAmountPaise: cart.totalPaise,
+            categories: ["grains", "oil"],
+            brandsAllow: [],
+            brandsDeny: [],
+            maxQuantityPerItem: 2,
+            priceCeilingPerItemPaise: null,
+            packTokens: ["campaign", "bundle"],
+            excludeTokens: [],
+            qty: 1,
+            packSizeHint: null,
+            queryText: offer.name,
+          },
+          phase: "notify",
+          failure: "none",
+          noticeId,
+          merchantOrderId,
+          razorpayOrderId: null,
+          razorpayPaymentId: null,
+          razorpaySignature: null,
+          razorpayStatus: "none",
+          confirmSource: "none",
+          attemptsCharge: 0,
+          notifyAt: nowIso(),
+          executeAt: null,
+          confirmedAt: null,
+          createdAt: nowIso(),
+        };
+
+        set({
+          phase: "notify",
+          pendingAttemptId: attempt.id,
+          pendingCart: cart,
+          activeCampaign: null,
+          attempts: [...get().attempts, attempt],
+          notices: [...get().notices, notice],
+          merchantOrders: [...get().merchantOrders, merchantOrder],
+          windowMsLeft: dwellMs,
+          chat: [
+            ...get().chat,
+            {
+              id: newId("msg"),
+              role: "agent",
+              ts: nowIso(),
+              text: `🎁 Campaign Bundle Activated (${offer.name}): Pre-debit notice (${noticeId}) issued for ₹${cart.totalPaise / 100}. Dwell countdown active.`,
+            },
+          ],
+        });
+      },
+
+      dismissCampaign: () => {
+        set({ activeCampaign: null });
       },
 
       abortPending: async (reason) => {

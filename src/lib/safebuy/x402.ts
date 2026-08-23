@@ -50,26 +50,46 @@ export const PREMIUM_CATALOG: CatalogItem[] = [
 const activeTokens = new Map<string, { expiresAt: number; orderId: string; sessionId: string }>();
 
 const X402_SECRET = process.env.RAZORPAY_KEY_SECRET || "safebuy_x402_secret_key";
-export const PREMIUM_ACCESS_FEE_PAISE = 200; // ₹2 micro-fee
 
-export function generateX402Challenge(sessionId = "agent_default"): {
+import { lookupAgentIdentity, calculateAgentPricingTier, type PricingTierResult } from "./identity";
+
+export const PREMIUM_ACCESS_FEE_PAISE = 200; // ₹2 micro-fee baseline
+
+export interface X402Challenge {
   status: 402;
   amountPaise: number;
   currency: string;
   razorpayOrderId: string;
   idempotencyKey: string;
   protocol: "x402-ap2-monetization-v1";
-} {
+  tier: "preferential_vip" | "standard" | "untrusted";
+  discountPercent: number;
+  agentTrustScore: number;
+  allowed: boolean;
+  denialReason?: string;
+}
+
+export function generateX402Challenge(agentIdOrSessionId = "agent_safebuy_default"): X402Challenge {
+  const identity = lookupAgentIdentity(agentIdOrSessionId);
+  const trustScore = identity?.trustScore ?? 50;
+  const status = identity?.status ?? "active";
+  const tierInfo: PricingTierResult = calculateAgentPricingTier(trustScore, status);
+
   const idempotencyKey = `x402_idemp_${crypto.randomBytes(6).toString("hex")}`;
   const mockOrderId = `order_x402_${crypto.randomBytes(6).toString("hex")}`;
 
   return {
     status: 402,
-    amountPaise: PREMIUM_ACCESS_FEE_PAISE,
+    amountPaise: tierInfo.amountPaise,
     currency: "INR",
     razorpayOrderId: mockOrderId,
     idempotencyKey,
     protocol: "x402-ap2-monetization-v1",
+    tier: tierInfo.tier,
+    discountPercent: tierInfo.discountPercent,
+    agentTrustScore: trustScore,
+    allowed: tierInfo.allowed,
+    denialReason: tierInfo.reason,
   };
 }
 
@@ -79,9 +99,18 @@ export function verifyAndIssueX402Token(params: {
   signature?: string | null;
   sessionId?: string;
   keySecret?: string;
-}): { ok: true; token: string; expiresAt: string; receipt: AP2AccessReceipt } | { ok: false; error: string } {
+  agentId?: string;
+}): { ok: true; token: string; expiresAt: string; receipt: AP2AccessReceipt; tier: string } | { ok: false; error: string } {
   const secret = params.keySecret || X402_SECRET;
-  const sessionId = params.sessionId || "agent_default";
+  const sessionId = params.agentId || params.sessionId || "agent_safebuy_default";
+  const identity = lookupAgentIdentity(sessionId);
+  const trustScore = identity?.trustScore ?? 50;
+  const status = identity?.status ?? "active";
+  const tierInfo = calculateAgentPricingTier(trustScore, status);
+
+  if (!tierInfo.allowed) {
+    return { ok: false, error: tierInfo.reason || "AgentUntrusted: Access denied to premium wholesale catalog." };
+  }
 
   // Signature verification (reusing existing timing-safe HMAC logic)
   if (params.signature && secret) {
@@ -110,7 +139,7 @@ export function verifyAndIssueX402Token(params: {
 
   const receipt: AP2AccessReceipt = {
     agentSessionId: sessionId,
-    amountPaise: PREMIUM_ACCESS_FEE_PAISE,
+    amountPaise: tierInfo.amountPaise,
     razorpayOrderId: params.orderId,
     razorpayPaymentId: params.paymentId,
     tokenIssuedAt: new Date(now).toISOString(),
@@ -123,6 +152,7 @@ export function verifyAndIssueX402Token(params: {
     token,
     expiresAt: expiresAtIso,
     receipt,
+    tier: tierInfo.tier,
   };
 }
 

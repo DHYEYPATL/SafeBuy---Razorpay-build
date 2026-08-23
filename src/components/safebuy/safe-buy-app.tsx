@@ -17,6 +17,9 @@ import {
   Store,
   Sparkles,
   PlusCircle,
+  Users,
+  Award,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,13 +38,21 @@ import { createRazorpayOrder, getRazorpayPublicKey } from "@/lib/safebuy/razorpa
 import { verifyCheckoutSignature } from "@/lib/safebuy/signature";
 import { openRazorpayCheckout } from "@/lib/safebuy/checkout";
 import { verifyAuditChain, type ChainVerificationResult } from "@/lib/safebuy/hash";
+import {
+  listRegisteredAgents,
+  registerAgentIdentity,
+  calculateAgentPricingTier,
+  computeDwellDurationMs,
+  type AgentIdentity,
+} from "@/lib/safebuy/identity";
 
-type Tab = "buy" | "mandate" | "orders" | "ap2" | "audit" | "lab" | "spec";
+type Tab = "buy" | "mandate" | "orders" | "agents" | "ap2" | "audit" | "lab" | "spec";
 
 const LABELS: { id: Tab; label: string; icon: typeof Shield }[] = [
   { id: "buy", label: "Buy", icon: ShoppingBag },
   { id: "mandate", label: "Policy", icon: KeyRound },
   { id: "orders", label: "Orders", icon: Store },
+  { id: "agents", label: "Agents", icon: Users },
   { id: "ap2", label: "AP2 Primitives", icon: FileCode2 },
   { id: "audit", label: "Audit", icon: ScrollText },
   { id: "lab", label: "Lab", icon: FlaskConical },
@@ -125,6 +136,7 @@ export function SafeBuyApp() {
         {tab === "buy" && <BuyPanel onNeedMandate={() => setTab("mandate")} />}
         {tab === "mandate" && <MandatePanel />}
         {tab === "orders" && <OrdersPanel />}
+        {tab === "agents" && <AgentsPanel />}
         {tab === "ap2" && <AP2PrimitivesPanel />}
         {tab === "audit" && <AuditPanel />}
         {tab === "lab" && <LabPanel />}
@@ -410,6 +422,7 @@ function BuyPanel({ onNeedMandate }: { onNeedMandate: () => void }) {
   const chat = useSafeBuy((s) => s.chat);
   const pending = useSafeBuy((s) => s.pendingCart);
   const intent = useSafeBuy((s) => s.pendingIntent);
+  const activeCampaign = useSafeBuy((s) => s.activeCampaign);
   const stockOverride = useSafeBuy((s) => s.stockOverride);
   const [text, setText] = useState("Buy 1 kg basmati under ₹150");
   const [busy, setBusy] = useState(false);
@@ -441,6 +454,44 @@ function BuyPanel({ onNeedMandate }: { onNeedMandate: () => void }) {
           </div>
           <LayerBadge layer="live" />
         </div>
+
+        {/* Dynamic AI Campaign Orchestrator Banner (PS Named Requirement) */}
+        {activeCampaign && (
+          <div className="border-b border-primary/40 bg-primary/10 p-3.5 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 font-semibold text-primary">
+                <Sparkles className="size-3.5 text-primary animate-pulse" />
+                ⚡ Active AI Campaign: {activeCampaign.name}
+              </span>
+              <Badge tone="ok">{activeCampaign.badge}</Badge>
+            </div>
+            <p className="mt-1 text-foreground/90 leading-relaxed">{activeCampaign.description}</p>
+            <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-primary/20 pt-2">
+              <span className="font-mono font-bold text-emerald-400">
+                {paiseToInr(activeCampaign.discountedTotalPaise)}{" "}
+                <span className="text-[11px] font-normal text-muted line-through">
+                  {paiseToInr(activeCampaign.originalTotalPaise)}
+                </span>{" "}
+                <span className="text-xs font-semibold text-primary">({activeCampaign.savingsPercent}% loyalty off)</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void useSafeBuy.getState().applyCampaign(activeCampaign)}
+                  disabled={busy || isExecuting}
+                  className="rounded bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+                >
+                  Claim Bundle
+                </button>
+                <button
+                  onClick={() => useSafeBuy.getState().dismissCampaign()}
+                  className="text-xs text-muted hover:text-foreground"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Golden Utterance Chips */}
         <div className="border-b border-border bg-elevated/40 p-3">
@@ -511,41 +562,38 @@ function BuyPanel({ onNeedMandate }: { onNeedMandate: () => void }) {
           }}
         >
           <input
-            className="field flex-1"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Buy 1 kg basmati under ₹150"
             disabled={busy || isExecuting}
+            placeholder="e.g. Buy 1 kg basmati under ₹150"
+            className="flex-1 rounded-[var(--radius-md)] border border-border bg-bg px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none"
           />
           <Button type="submit" disabled={busy || isExecuting}>
-            {busy ? "Planning" : isExecuting ? phase : "Send"}
+            {busy ? "Planning..." : "Send"}
           </Button>
         </form>
       </section>
 
-      <aside className="rounded-[var(--radius-xl)] border border-border bg-surface p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-display text-lg">{meta.name}</h3>
-            <p className="text-xs text-muted">{meta.note}</p>
-          </div>
-          <LayerBadge layer="synthetic" />
+      {/* Merchant Live Inventory & Context Side Panel */}
+      <aside className="rounded-[var(--radius-xl)] border border-border bg-surface p-5 text-sm">
+        <h3 className="font-display text-lg">{meta.name}</h3>
+        <p className="text-xs text-muted">{meta.city} · {meta.note}</p>
+        <div className="mt-4 flex items-center justify-between border-b border-border pb-2 text-xs uppercase tracking-wider text-subtle">
+          <span>Live Catalog SKUs</span>
+          <span>Stock</span>
         </div>
-        <ul className="mt-3 max-h-[28rem] space-y-2 overflow-y-auto">
-          {CATALOG.map((i) => {
-            const stock = liveStock(i.sku, stockOverride);
+        <ul className="mt-2 space-y-2 text-xs">
+          {CATALOG.map((item) => {
+            const cur = liveStock(item.sku, stockOverride);
             return (
-              <li key={i.sku} className={`rounded-[var(--radius-sm)] border p-3 ${stock === 0 ? "border-danger/30 bg-danger/5 opacity-60" : "border-border"}`}>
-                <div className="flex justify-between gap-2 text-sm font-medium">
-                  <span>{i.name}</span>
-                  <span className="font-mono tabular-nums">{paiseToInr(i.pricePaise)}</span>
+              <li key={item.sku} className="flex items-center justify-between border-b border-border/40 py-1">
+                <div>
+                  <p className="font-medium text-foreground">{item.name}</p>
+                  <p className="font-mono text-[10px] text-subtle">{item.sku} · {paiseToInr(item.pricePaise)}</p>
                 </div>
-                <div className="mt-1 flex items-center justify-between text-[11px] text-subtle">
-                  <span>{i.brand} · {i.category} · {i.unit}</span>
-                  <span className={stock === 0 ? "text-danger font-semibold" : ""}>
-                    {stock === 0 ? "Out of Stock" : `${stock} in stock`}
-                  </span>
-                </div>
+                <span className={`font-mono font-semibold ${cur === 0 ? "text-danger" : "text-emerald-400"}`}>
+                  {cur}
+                </span>
               </li>
             );
           })}
@@ -599,6 +647,178 @@ function OrdersPanel() {
         )}
       </div>
     </section>
+  );
+}
+
+function AgentsPanel() {
+  const currentIdentity = useSafeBuy((s) => s.agentIdentity);
+  const audit = useSafeBuy((s) => s.audit);
+  const [agentsList, setAgentsList] = useState<AgentIdentity[]>([]);
+  const [newOpName, setNewOpName] = useState("");
+  const [newActingFor, setNewActingFor] = useState("");
+
+  useEffect(() => {
+    setAgentsList(listRegisteredAgents());
+  }, [currentIdentity]);
+
+  const pricingTier = calculateAgentPricingTier(currentIdentity.trustScore, currentIdentity.status);
+  const dwellMs = computeDwellDurationMs(currentIdentity.trustScore);
+
+  function handleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newOpName.trim()) return;
+    const pubKey = `pub_ed25519_${Math.random().toString(36).substring(2, 10)}`;
+    registerAgentIdentity({
+      publicKey: pubKey,
+      operatorName: newOpName.trim(),
+      actingFor: newActingFor.trim() || null,
+    });
+    setNewOpName("");
+    setNewActingFor("");
+    setAgentsList(listRegisteredAgents());
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-[var(--radius-xl)] border border-border bg-surface p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="font-display text-2xl">Connected AI Agent Registry & Identity</h2>
+              <LayerBadge layer="live" />
+            </div>
+            <p className="mt-1 text-sm text-muted">
+              Modelled on Visa TAP & NPCI-UAP cryptographic agent identity: in-memory registry, HMAC-SHA256 signature verification, 30s replay defense, and dynamic trust scoring.
+            </p>
+          </div>
+          <Badge tone="ok">{agentsList.length} Registered Agent{agentsList.length > 1 ? "s" : ""}</Badge>
+        </div>
+
+        {/* Current Active Agent Reputation Card */}
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <div className="rounded-[var(--radius-md)] border border-border bg-elevated p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-subtle">Active Agent Identity</p>
+            <p className="mt-1 font-mono text-base font-semibold text-foreground">{currentIdentity.operatorName}</p>
+            <p className="text-xs font-mono text-muted">ID: {currentIdentity.agentId}</p>
+            <div className="mt-3 flex items-center gap-2">
+              <Badge tone={currentIdentity.status === "active" ? "ok" : "bad"}>{currentIdentity.status.toUpperCase()}</Badge>
+              <span className="text-xs text-muted">Acting for: <strong>{currentIdentity.actingFor ?? "Principal"}</strong></span>
+            </div>
+          </div>
+
+          <div className="rounded-[var(--radius-md)] border border-border bg-elevated p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-subtle">Derived Trust Score</p>
+              <span className="font-mono text-base font-bold text-primary">{currentIdentity.trustScore}/100</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface border border-border">
+              <div
+                className={`h-full transition-all duration-300 ${
+                  currentIdentity.trustScore >= 80
+                    ? "bg-emerald-400"
+                    : currentIdentity.trustScore >= 50
+                    ? "bg-primary"
+                    : "bg-rose-400"
+                }`}
+                style={{ width: `${currentIdentity.trustScore}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              {currentIdentity.trustScore >= 80
+                ? "🌟 High-Trust: Clean payment history with zero adversarial blocks."
+                : currentIdentity.trustScore >= 50
+                ? "Standard baseline reputation for verified AI buyer."
+                : "⚠️ Low-Trust: Guardrail rejections or adversarial triggers detected."}
+            </p>
+          </div>
+
+          <div className="rounded-[var(--radius-md)] border border-border bg-elevated p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-subtle">Reputation-Derived Policy</p>
+            <div className="mt-2 space-y-1.5 text-xs font-mono">
+              <div className="flex justify-between">
+                <span className="text-muted">x402 Pricing Tier:</span>
+                <span className="font-semibold text-emerald-400">{pricingTier.tier} (₹{pricingTier.amountPaise / 100})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Pre-Debit Notice:</span>
+                <span className="font-semibold text-primary">{dwellMs / 1000}s ({dwellMs > 8000 ? "Elevated Caution" : "Standard Regulatory Floor"})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Replay Window:</span>
+                <span>30s Nonce Window</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Registered Agents Table */}
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold uppercase tracking-wider text-subtle">Identity Registry Table</h3>
+          <div className="mt-2 overflow-x-auto rounded-[var(--radius-md)] border border-border">
+            <table className="w-full text-left text-xs font-mono">
+              <thead className="border-b border-border bg-elevated text-subtle">
+                <tr>
+                  <th className="p-3">Agent ID</th>
+                  <th className="p-3">Operator</th>
+                  <th className="p-3">Acting For</th>
+                  <th className="p-3">Trust Score</th>
+                  <th className="p-3">x402 Tier</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3">Public Key</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50 bg-surface">
+                {agentsList.map((ag) => (
+                  <tr key={ag.agentId} className={ag.agentId === currentIdentity.agentId ? "bg-primary/5" : ""}>
+                    <td className="p-3 font-semibold text-foreground">{ag.agentId}</td>
+                    <td className="p-3 font-sans font-medium">{ag.operatorName}</td>
+                    <td className="p-3 text-muted">{ag.actingFor ?? "Self"}</td>
+                    <td className="p-3">
+                      <span className="font-bold text-primary">{ag.trustScore}</span>/100
+                    </td>
+                    <td className="p-3">
+                      <span className={ag.trustScore >= 80 ? "text-emerald-400 font-semibold" : "text-muted"}>
+                        {ag.trustScore >= 80 ? "VIP (₹1)" : "Standard (₹2)"}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <Badge tone={ag.status === "active" ? "ok" : "bad"}>{ag.status}</Badge>
+                    </td>
+                    <td className="p-3 text-[11px] text-subtle">{ag.publicKey.substring(0, 16)}...</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Sub-Agent Registration Form */}
+        <form onSubmit={handleRegister} className="mt-6 rounded-[var(--radius-md)] border border-border bg-elevated/40 p-4">
+          <h3 className="text-sm font-semibold text-foreground">Register Autonomous Sub-Agent (TAP/UAP Delegation Pattern)</h3>
+          <p className="mt-0.5 text-xs text-muted">Mint a new cryptographically bound sub-agent with explicit accountability (Edge Case 12).</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <input
+              type="text"
+              placeholder="Operator Name (e.g. Weekly Restock Agent)"
+              value={newOpName}
+              onChange={(e) => setNewOpName(e.target.value)}
+              className="rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none"
+              required
+            />
+            <input
+              type="text"
+              placeholder="Acting For (e.g. Customer Dhyey)"
+              value={newActingFor}
+              onChange={(e) => setNewActingFor(e.target.value)}
+              className="rounded-[var(--radius-sm)] border border-border bg-surface px-3 py-2 text-xs text-foreground placeholder:text-muted focus:border-primary focus:outline-none"
+            />
+            <Button type="submit" size="sm" className="h-auto py-2 text-xs">
+              <PlusCircle className="mr-1.5 size-3.5" /> Register Sub-Agent
+            </Button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 
@@ -733,6 +953,8 @@ function LabPanel() {
     { id: "soft_decline", title: "Soft decline", detail: "Fetch status before retry. Stops safely at 1 retry. Test card: 4000 0000 0000 1003." },
     { id: "stock_race", title: "Stock race", detail: "SKU drops to 0 after discovery. Automatically seeks next-best in-mandate item." },
     { id: "semantic_mismatch", title: "LLM mismatch", detail: "Proposes chocolate for rice instruction. Guardrail halts for human confirm." },
+    { id: "replay_attack", title: "Replay / Forgery Attack", detail: "Edge Case 10: Injects forged HMAC signature & replayed nonce. Guardrail rejects instantly." },
+    { id: "untrusted_agent", title: "Untrusted Agent", detail: "Degrades agent trust score to 25. Enforces max 8s dwell & denies x402 wholesale tier." },
     { id: "afa_threshold", title: "Above ₹15k", detail: "Requires explicit human re-confirm. No silent debit above RBI threshold." },
     { id: "revoke_in_window", title: "Revoke in window", detail: "Future blocked; in-flight still completes under previously valid policy." },
   ];
@@ -838,23 +1060,32 @@ function GateOverlay() {
   const phase = useSafeBuy((s) => s.phase);
   const cart = useSafeBuy((s) => s.pendingCart);
   const left = useSafeBuy((s) => s.windowMsLeft);
+  const notices = useSafeBuy((s) => s.notices);
   const attempts = useSafeBuy((s) => s.attempts);
+  const agentIdentity = useSafeBuy((s) => s.agentIdentity);
   const pendingId = useSafeBuy((s) => s.pendingAttemptId);
   const attempt = attempts.find((a) => a.id === pendingId);
+  const activeNotice = notices.find((n) => n.attemptId === pendingId);
+  const totalDwell = activeNotice?.dwellMs ?? DEMO_NOTIFY_WINDOW_MS;
 
   const upsell = useSafeBuy((s) => s.upsellCandidate);
 
   if (phase === "window" && cart) {
-    const pct = Math.max(0, left / DEMO_NOTIFY_WINDOW_MS);
+    const pct = Math.max(0, left / totalDwell);
     return (
       <div className="fixed inset-0 z-40 flex items-end justify-center bg-bg/70 p-4 sm:items-center">
         <div className="w-full max-w-md space-y-3 rounded-[var(--radius-xl)] border border-border bg-surface p-5 shadow-2xl">
           <div className="flex items-center justify-between">
-            <h3 className="font-display text-xl">Pre-Debit Notice Active</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-display text-xl">Pre-Debit Notice Active</h3>
+              <span className="rounded bg-primary/20 px-2 py-0.5 text-[10px] font-mono text-primary font-semibold">
+                {totalDwell > 8000 ? "🛡️ Elevated Caution (12s)" : "⏱️ Regulatory Floor (8s)"}
+              </span>
+            </div>
             <LayerBadge layer="live" />
           </div>
           <p className="text-xs font-mono text-subtle">
-            Notice #{attempt?.noticeId ?? "not_active"} · Order #{attempt?.merchantOrderId ?? "mord_active"}
+            Notice #{attempt?.noticeId ?? "not_active"} · Agent: {agentIdentity.operatorName} ({agentIdentity.trustScore}/100 Trust)
           </p>
           <p className="text-sm font-medium text-foreground">
             {MERCHANT_NAME} · {cart.lines.map((l) => l.name).join(", ")} · {paiseToInr(cart.totalPaise)}

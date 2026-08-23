@@ -48,9 +48,9 @@ SafeBuy maintains a strict, transparent boundary between real production logic a
 | **Deterministic Guardrail** | **LIVE** | Validates cart items against policy schema **and** instruction pack tokens (`packTokens`, `excludeTokens`), catching real agentic substitution errors (e.g. atta for basmati). |
 | **Deterministic Bounded Upsell** | **LIVE** | Surfaces unit-price optimization suggestions (e.g. 5kg pack saving 12%/kg) strictly bounded by remaining mandate limits and brand constraints. |
 | **Machine-Readable Discovery** | **LIVE** | `/.well-known/agent-catalog.json` AP2/ACP-compliant public discovery manifest exposing structured SKU metadata and `packTokens` for external AI buyers. |
-| **Model Context Protocol (MCP)** | **LIVE** | Standard JSON-RPC stdio MCP server (`src/mcp/server.ts`) exporting 6 core tools for external AI agents (Claude Desktop, etc.) with outbound budget redaction. |
+| **Model Context Protocol (MCP)** | **LIVE** | Standard JSON-RPC stdio MCP server (`src/mcp/server.ts`) exporting 7 core tools (including Campaign Orchestrator) for external AI agents (Claude Desktop, etc.) with outbound budget redaction. |
 | **Agent Identity & Trust (TAP/UAP Pattern)** | **LIVE (Pattern)** | Scoped reference pattern: in-memory agent registration, HMAC message signing, 30s replay defense, and audit-derived dynamic trust score. *Not live Visa TAP or NPCI UAP directory.* |
-| **x402-Pattern Monetization** | **LIVE (Pattern)** | HTTP 402 challenge/settlement module (`src/lib/safebuy/x402.ts`) gating wholesale & priority stock behind ₹2 micro-fee paid via Razorpay Orders. |
+| **x402-Pattern Monetization** | **LIVE (Pattern)** | HTTP 402 challenge/settlement module (`src/lib/safebuy/x402.ts`) gating wholesale & priority stock behind dynamic micro-fees (₹1 VIP rate for high-trust agents vs ₹2 standard) paid via Razorpay Orders. |
 | **Merchant Order & Stock Reservation** | **LIVE** | Creates durable `MerchantOrder` reserving catalog inventory before the notice window; settles to `paid` or releases on abort. |
 | **Pre-Debit Notice Record** | **LIVE** | Creates a durable `PreDebitNotice` record with timestamp thresholds (`executeAfter`), dwell countdown, and hold/extend controls. |
 | **Razorpay Orders API** | **LIVE** | Real `POST /v1/orders` created before debit with receipt ID, correlation IDs, and attempt metadata. Checkout requires `order_id`. |
@@ -112,7 +112,7 @@ SafeBuy structures transaction state into three distinct JSON documents modelled
 
 ---
 
-## 5. Setup & Environment Configuration
+## 6. Setup & Environment Configuration
 
 ### Prerequisites
 - Node.js 22+
@@ -158,7 +158,7 @@ The webhook parser and HMAC SHA-256 verifier are fully tested in `src/lib/safebu
 
 ---
 
-## 6. Failure Lab Scenarios & Golden Utterances
+## 7. Failure Lab Scenarios & Golden Utterances
 
 Try these 1-click golden utterances in the Buy panel:
 - **`"Buy 1 kg basmati under ₹150"`**: Complete happy path flow.
@@ -169,6 +169,6 @@ Try these 1-click golden utterances in the Buy panel:
 
 ---
 
-## 7. License & Hackathon Attribution
+## 8. License & Hackathon Attribution
 Built for the Razorpay AI Buildathon — Track 01 (Agentic Commerce).
 All core safety protocols, guardrail enforcement, mandate management, and audit verification algorithms are original implementations.

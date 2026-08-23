@@ -94,12 +94,16 @@ LLMs (Grok / heuristic parser) are used **strictly as proposers** to convert nat
 ---
 
 ## 9. What automated test coverage is implemented?
-16 automated unit tests (`npm run test:unit`) testing:
-- Token-level guardrail checks (preventing same-category substitutions).
+40 automated unit tests (`npm run test:unit`) across 7 test suites testing:
+- Token-level guardrail checks (preventing same-category substitutions like atta for basmati).
 - Mandate expiration and budget exhaustion blocks.
 - Deny-brand and ₹15,000 AFA threshold enforcement.
 - SHA-256 hash chaining and tamper detection.
-- Merchant order lifecycle and pre-debit notice thresholds.
+- Merchant order reservation lifecycle and dynamic pre-debit notice dwell thresholds.
+- Agent Identity & cryptographic TAP/UAP signature verification (Edge Case 10: replay defense, Edge Case 11: volume dampening, Edge Case 12: `actingFor` accountability, Edge Case 13: budget cap redaction, Edge Case 14: fail-closed on unknown agent).
+- Campaign Orchestrator rules: returning buyer loyalty bundles (15% off) and first-time buyer starter packs.
+- x402-pattern HTTP 402 challenge schemas, dynamic reputation pricing tiers, and token settlement.
+- Model Context Protocol (MCP) tool handlers for external AI buyers.
 - Ask-back clarification generation for low budgets.
 - Timing-safe HMAC SHA-256 signature verification for Checkout and Webhooks.
 
@@ -112,8 +116,9 @@ LLMs (Grok / heuristic parser) are used **strictly as proposers** to convert nat
 
 ---
 
-## 11. What are the non-goals of this project?
-- We do not claim silent, zero-human autonomous debit on Indian rails (because bank e-mandate registration is required by law).
+## 11. What are the non-goals & recognized future work?
+- **Spontaneous On-Demand Silent Debit Non-Goal:** We do not claim silent, zero-human autonomous debit for spontaneous on-demand purchases on Indian rails, because RBI/NPCI regulations require customer-present AFA or pre-debit notifications before funds can be charged.
+- **Recognized-but-Deferred Legal Rail (Future Work):** The single Indian rail scenario where genuine silent debit *is* legally supportable today is a truly recurring, schedule-based low-value replenishment (e.g. weekly atta restock) via UPI Autopay / e-mandates, since that is schedule-based-with-notice by design; we explicitly scoped this out in favor of the harder, more immediate problem of on-demand conversational agentic commerce.
 - We do not implement speculative multi-merchant web scraping or proprietary crypto tokens.
 - We focus exclusively on Option B: making merchants transactable by AI buyers with verified Razorpay test-mode execution.
 

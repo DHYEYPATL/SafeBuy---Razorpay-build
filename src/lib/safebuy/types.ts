@@ -51,7 +51,9 @@ export type LabInject =
   | "stock_race"
   | "semantic_mismatch"
   | "afa_threshold"
-  | "revoke_in_window";
+  | "revoke_in_window"
+  | "replay_attack"
+  | "untrusted_agent";
 
 export interface StructuredIntent {
   maxAmountPaise: number | null;

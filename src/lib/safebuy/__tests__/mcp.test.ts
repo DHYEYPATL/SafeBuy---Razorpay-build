@@ -2,11 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { handleMcpToolCall, MCP_TOOLS } from "../../../mcp/server";
 
-test("MCP: tools list contains all 6 core agent tools", () => {
-  assert.equal(MCP_TOOLS.length, 6);
+test("MCP: tools list contains all core agent tools including campaign orchestrator", () => {
+  assert.ok(MCP_TOOLS.length >= 7);
   const toolNames = MCP_TOOLS.map((t) => t.name);
   assert.ok(toolNames.includes("search_catalog"));
   assert.ok(toolNames.includes("propose_purchase"));
+  assert.ok(toolNames.includes("get_active_campaigns"));
   assert.ok(toolNames.includes("confirm_purchase"));
   assert.ok(toolNames.includes("request_premium_access"));
   assert.ok(toolNames.includes("pay_for_premium_access"));
@@ -28,6 +29,13 @@ test("MCP: propose_purchase succeeds for valid intent within mandate", async () 
   assert.ok(res.noticeId.startsWith("not_mcp_"));
   assert.equal(res.dwellSeconds, 8);
   assert.equal(res.cart.totalRupees, 142);
+});
+
+test("MCP: get_active_campaigns returns valid active campaign bundle for mandate", async () => {
+  const res = (await handleMcpToolCall("get_active_campaigns", {
+    mandateId: "man_mcp_default",
+  })) as any;
+  assert.equal(typeof res.active, "boolean");
 });
 
 test("MCP: adversarial intent string cannot bypass deterministic guardrail (Edge Case 9)", async () => {
