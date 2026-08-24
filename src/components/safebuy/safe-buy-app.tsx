@@ -47,18 +47,18 @@ import {
   type AgentIdentity,
 } from "@/lib/safebuy/identity";
 
-type Tab = "buy" | "mandate" | "orders" | "growth" | "agents" | "ap2" | "audit" | "lab" | "spec";
+type Tab = "mandate" | "buy" | "orders" | "growth" | "audit" | "lab" | "ap2" | "agents" | "spec";
 
 const LABELS: { id: Tab; label: string; icon: typeof Shield }[] = [
-  { id: "buy", label: "Buy", icon: ShoppingBag },
   { id: "mandate", label: "Policy", icon: KeyRound },
+  { id: "buy", label: "Buy", icon: ShoppingBag },
   { id: "orders", label: "Orders", icon: Store },
   { id: "growth", label: "Growth", icon: TrendingUp },
-  { id: "agents", label: "Agents", icon: Users },
-  { id: "ap2", label: "AP2 Primitives", icon: FileCode2 },
   { id: "audit", label: "Audit", icon: ScrollText },
-  { id: "lab", label: "Lab", icon: FlaskConical },
-  { id: "spec", label: "USP", icon: Shield },
+  { id: "lab", label: "Failure Lab", icon: FlaskConical },
+  { id: "ap2", label: "AP2 Docs", icon: FileCode2 },
+  { id: "agents", label: "Agents (Ref)", icon: Users },
+  { id: "spec", label: "Spec", icon: Shield },
 ];
 
 const GOLDEN_UTTERANCES = [
