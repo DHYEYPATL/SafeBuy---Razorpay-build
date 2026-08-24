@@ -107,8 +107,40 @@ Additionally, our tier boundary architecture includes a deliberate 20-point buff
 
 ---
 
-## 3. What to Have Open During the Interview
+---
+
+## 3. Big 4 Control Matrix & Source of Truth Architecture
+
+### A. Internal Control Objectives (C1–C6)
+
+| Control Objective | Risk Mitigated | Implementation Mechanism | Demonstrated Evidence in Demo |
+|:---|:---|:---|:---|
+| **C1. Authorization Boundary** | Unbounded / rogue autonomous LLM spend | Human policy schema (`maxAmountPaise`, `categories`, `brandsDeny`, `validUntil`) | Policy tab configuration + guardrail block on out-of-policy categories |
+| **C2. Order Completeness** | Client-tampered amount or unrecorded checkout | `openRazorpayCheckout` strictly requires server `order_id` generated via `POST /v1/orders` | Checkout refuses to open without valid server order; `order_created` audit event |
+| **C3. Settlement Integrity** | Balance decremented on bank decline / network drop | Client handler moves state to `pending`; polling `GET /v1/payments/:id` verifies `status === 'captured'` | Mandate remaining balance remains untouched until `status === 'captured'` arrives |
+| **C4. State Mutator & Idempotency** | Double-debiting from duplicate webhooks/callbacks | Single `applyConfirm` mutator with `confirmedPaymentIds` deduplication table | Duplicate payment events logged as `razorpay.duplicate_ignored` with 0 balance impact |
+| **C5. Fail-Closed Inventory & Cap** | Locked stock or burned budget on abandoned carts | User abort, modal dismiss, or soft-decline retry exhaustion triggers `releaseReservation` | Merchant Order status marked `released`; stock returned to catalog; 0 balance deducted |
+| **C6. Deterministic Explainability** | Blackbox non-deterministic agentic substitutions | Token-level guardrail (`packTokens`) + sequential SHA-256 hash-chained audit trail | Atta-for-basmati mismatch block + interactive UI hash verification |
+
+### B. Source of Truth Map
+
+| Entity | System of Record | Sync / Mutation Rule | Disclosed Limitation |
+|:---|:---|:---|:---|
+| **Payment & Capture Status** | **Razorpay API** | Backend polling (`GET /v1/payments/:id`) | Razorpay Test Mode keys |
+| **Spending Cap & Remaining Balance** | **SafeBuy State Orchestrator** | Mutated *solely* inside `applyConfirm` upon verified capture | In-session client state (demo control environment) |
+| **Inventory & Stock Reservations** | **SafeBuy Merchant Order Lifecycle** | Reserved at `notify`; decremented at `captured`; reverted at `release` | Synthetic stand-in grocery merchant catalog |
+| **Audit Trail & Event Proof** | **Cryptographic Hash Chain** | Appended sequentially via `hashRecord(prevHash, payload)` | Client-side verification tool |
+
+---
+
+## 4. Target Partner Answer (The Comprehensive Briefing)
+
+> *"SafeBuy is a Track 01 Option B control demo: a human policy bounds an AI planner; a pre-debit notice gates execution; a real Razorpay test Order is required before Checkout; the client never treats the handler as settlement; we debit only after payment fetch reports captured; failures release reservations without burning the cap; the audit trail explains every transition. Growth is reported only as settled test GMV. Identity, MCP, and x402 are reference patterns—not live networks. Limitations: test mode, in-session app state, compressed notice window versus production RBI timing."*
+
+---
+
+## 5. What to Have Open During the Interview
 1. **SafeBuy Web App** running on `localhost:8080`.
 2. **Razorpay Dashboard in Test Mode** showing real Orders and Payments.
 3. **Audit Tab** ready to click "Verify Audit Chain".
-4. **Terminal** ready to run `npm run test:unit` (40/40 tests passing).
+4. **Terminal** ready to run `npm run test:unit` (41/41 tests passing).
