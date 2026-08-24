@@ -519,19 +519,20 @@ export const useSafeBuy = create<SafeBuyState>()(
         set({ pendingCart: cart, phase: "guardrail" });
 
         if (!cart.lines.length) {
+          const explainMsg = cart.clarificationPrompt || cart.reason;
           await get().appendAudit({
             correlationId: cid,
             phase: "failed",
             event: "plan.empty",
             layer: "live",
-            explain: cart.reason,
+            explain: explainMsg,
             payload: { intent },
           });
           set({
             phase: "failed",
             chat: [
               ...get().chat,
-              { id: newId("msg"), role: "agent", ts: nowIso(), text: cart.reason },
+              { id: newId("msg"), role: "agent", ts: nowIso(), text: explainMsg },
             ],
           });
           return;

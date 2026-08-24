@@ -48,15 +48,15 @@ SafeBuy maintains a strict, transparent boundary between real production logic a
 | **Deterministic Guardrail** | **LIVE** | Validates cart items against policy schema **and** instruction pack tokens (`packTokens`, `excludeTokens`), catching real agentic substitution errors (e.g. atta for basmati). |
 | **Deterministic Bounded Upsell** | **LIVE** | Surfaces unit-price optimization suggestions (e.g. 5kg pack saving 12%/kg) strictly bounded by remaining mandate limits and brand constraints. |
 | **Machine-Readable Discovery** | **LIVE** | `/.well-known/agent-catalog.json` AP2/ACP-compliant public discovery manifest exposing structured SKU metadata and `packTokens` for external AI buyers. |
-| **Model Context Protocol (MCP)** | **LIVE** | Standard JSON-RPC stdio MCP server (`src/mcp/server.ts`) exporting 7 core tools (including Campaign Orchestrator) for external AI agents (Claude Desktop, etc.) with outbound budget redaction. |
+| **Model Context Protocol (MCP)** | **LIVE (Stdio Tool)** | Standard JSON-RPC stdio MCP server (`src/mcp/server.ts`) exporting 7 core tools (including Campaign Orchestrator) for external AI agents (Claude Desktop, etc.) with outbound budget redaction (local stdio tool pattern, not a hosted network product). |
 | **Agent Identity & Trust (TAP/UAP Pattern)** | **LIVE (Pattern)** | Scoped reference pattern: in-memory agent registration, HMAC message signing, 30s replay defense, and audit-derived dynamic trust score. *Not live Visa TAP or NPCI UAP directory.* |
-| **x402-Pattern Monetization** | **LIVE (Pattern)** | HTTP 402 challenge/settlement module (`src/lib/safebuy/x402.ts`) gating wholesale & priority stock behind dynamic micro-fees (₹1 VIP rate for high-trust agents vs ₹2 standard) paid via Razorpay Orders. |
+| **x402-Pattern Monetization** | **LIVE (Pattern)** | HTTP 402 challenge/settlement reference pattern (`src/lib/safebuy/x402.ts`) gating wholesale & priority stock behind dynamic micro-fees (₹1 VIP rate for high-trust agents vs ₹2 standard) paid via Razorpay Orders (pattern, not live network product). |
 | **Merchant Order & Stock Reservation** | **LIVE** | Creates durable `MerchantOrder` reserving catalog inventory before the notice window; settles to `paid` or releases on abort. |
 | **Pre-Debit Notice Record** | **LIVE** | Creates a durable `PreDebitNotice` record with timestamp thresholds (`executeAfter`), dwell countdown, and hold/extend controls. |
 | **Razorpay Orders API** | **LIVE** | Real `POST /v1/orders` created before debit with receipt ID, correlation IDs, and attempt metadata. Checkout requires `order_id`. |
 | **In-Session Reconciliation (Primary Rail)**| **LIVE** | Direct backend status polling (`GET /v1/payments/:id`). Settlement executes only when `status === "captured"`. |
 | **HMAC Signature Verification** | **LIVE** | Server-side cryptographic verification of Checkout `order_id|payment_id` signatures. |
-| **Webhook Validation Module** | **LIVE (Module)** | Offline timing-safe raw body HMAC SHA-256 validation module and parser (`src/lib/safebuy/razorpay-webhook.ts`) verified via automated unit test suite. |
+| **Webhook Validation Module** | **LIVE (Module)** | Offline timing-safe raw body HMAC SHA-256 validation module and parser (`src/lib/safebuy/razorpay-webhook.ts`) verified via automated unit test suite. Live HTTP webhook ingress is not in repo / post-deploy. |
 | **Hash-Chained Audit Trail** | **LIVE** | Sequential SHA-256 hash chaining with canonical JSON and interactive UI verification. |
 | **Merchant Catalog (Nila Kirana)** | **SYNTHETIC** | Stand-in grocery merchant catalog providing realistic agent-readable SKUs. |
 | **Bank Pre-debit SMS** | **SYNTHETIC** | Simulated in-app notice standing in for RBI 24h SMS notice. |
@@ -151,10 +151,10 @@ When Razorpay Checkout opens, use test mode credentials:
 - **Success Test Card:** `4111 1111 1111 1111`, Expiry: future date (`12/30`), CVV: `123`, OTP: `123456`.
 - **Soft Decline Card:** `4000 0000 0000 1003` (Returns card declined / insufficient funds to test retry cap).
 
-### 4. Webhook Subsystem (Optional Tunnel Extension)
-The webhook parser and HMAC SHA-256 verifier are fully tested in `src/lib/safebuy/__tests__/signature.test.ts`. 
-- **Primary in-session demo settlement:** Real-time Fetch status polling (`GET /v1/payments/:id`).
-- **External Webhook testing (optional):** Start tunnel `ngrok http 8080` and point Razorpay Dashboard webhooks to `https://<tunnel-url>/api/razorpay/webhook`.
+### 4. Webhook Subsystem (Verified Module / Post-Deploy Route)
+The webhook parser and timing-safe HMAC SHA-256 verifier are fully tested offline in `src/lib/safebuy/__tests__/signature.test.ts`. 
+- **Primary in-session demo settlement:** Real-time Fetch status polling (`GET /v1/payments/:id`) verifying `status === "captured"`.
+- **Live Webhook Ingress:** Webhook HTTP ingress route is not bundled in this repo (post-deploy infrastructure). The offline HMAC parser and deduplication logic are fully implemented and verified via unit tests.
 
 ---
 

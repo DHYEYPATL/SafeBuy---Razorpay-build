@@ -28,14 +28,14 @@ We built a dual-layer commerce and payment spine:
   - Token-level Deterministic Guardrail (`packTokens`, `excludeTokens`, brand limits, price ceilings).
   - Deterministic Bounded Upsell Engine (unit-price optimization suggestions strictly bounded by policy limits).
   - AP2/ACP-compliant Machine Discovery Endpoint (`GET /.well-known/agent-catalog.json` and `GET /api/catalog/skus`).
-  - Model Context Protocol (MCP) Server (`src/mcp/server.ts`) exporting 6 standard agent tools with outbound budget redaction.
+  - Model Context Protocol (MCP) Stdio Tool (`src/mcp/server.ts`) exporting 7 standard agent tools with outbound budget redaction (stdio tool pattern, not a hosted network product).
   - Agent Identity & Trust Reputation Reference Pattern (`src/lib/safebuy/identity.ts`) with HMAC message signing, 30s replay window, and audit-derived trust scoring (*disclosed: reference pattern, not live Visa TAP directory or NPCI UAP registry*).
-  - x402-Pattern Monetization Module (`src/lib/safebuy/x402.ts`) generating HTTP 402 challenge schemas and session-bound tokens.
+  - x402-Pattern Monetization Module (`src/lib/safebuy/x402.ts`) generating HTTP 402 challenge schemas and session-bound tokens (reference pattern, not a live network product).
   - Standalone External Third-Party Agent Script (`scripts/external-agent-demo.ts`).
   - Razorpay Orders API (`POST /v1/orders`) with idempotency headers.
   - Razorpay Checkout.js with mandatory `order_id`.
   - Backend Payment Status Polling (`GET /v1/payments/:id`) as the primary settlement path.
-  - Offline Webhook HMAC SHA-256 validation module and test suite (`src/lib/safebuy/razorpay-webhook.ts`).
+  - Offline Webhook HMAC SHA-256 validation module and test suite (`src/lib/safebuy/razorpay-webhook.ts`) (live HTTP webhook ingress is not in repo / post-deploy).
   - Server-side HMAC-SHA256 signature verification.
   - Single `applyConfirm` mutator with `confirmedPaymentIds` deduplication.
   - Cryptographic SHA-256 hash-chained audit trail with verification tool.
