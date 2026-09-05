@@ -235,66 +235,22 @@ export const useSafeBuy = create<SafeBuyState>()(
       stockOverride: {},
       hydrateOk: false,
 
-      // ElectroCore initial state
-      selectedModel: "MiMo 2.5 - OpenCode Zen",
+      // SafeBuy AI Commerce initial state
+      selectedModel: "SafeBuy Grounded Intent Engine",
       setSelectedModel: (m) => {
         set({ selectedModel: m });
         get().addSessionActivity("Model changed", `Switched active model to ${m}`);
       },
-      aiShortlist: [
-        {
-          badge: "BEST MATCH",
-          sku: "SONY-WH1000XM5",
-          name: "Sony WH-1000XM5 Wireless Headphones",
-          brand: "Sony",
-          pricePaise: 2999000,
-          stock: 8,
-          unit: "1 unit",
-          reason: "Top-rated noise cancelling headphones, ₹29,990, in stock 8 units.",
-          specsHighlight: "ANC · 30h · LDAC",
-        },
-        {
-          badge: "ALTERNATIVE",
-          sku: "ANKER-7IN1-HUB",
-          name: "Anker 7-in-1 USB-C Hub",
-          brand: "Anker",
-          pricePaise: 499000,
-          stock: 14,
-          unit: "1 unit",
-          reason: "100W PD, 4K60 HDMI, 7 ports companion hub.",
-          specsHighlight: "100W PD · 4K60 · 7 Ports",
-        },
-        {
-          badge: "OPTION 03",
-          sku: "KEYCHRON-K3-MAX",
-          name: "Keychron K3 Max Wireless Keyboard",
-          brand: "Keychron",
-          pricePaise: 1649000,
-          stock: 12,
-          unit: "1 unit",
-          reason: "Custom wireless mechanical keyboard, QMK/VIA support.",
-          specsHighlight: "RGB · Mechanical · 84 Keys",
-        },
-      ],
+      aiShortlist: [],
       setAiShortlist: (list) => set({ aiShortlist: list }),
-      aiEvaluation: {
-        consideredCount: 5,
-        primaryMatch: "Sony WH-1000XM5 Wireless Headphones",
-        primaryReason: "Matches ANC, wireless connectivity, and in-stock inventory.",
-        rejected: [
-          { name: "Apple AirPods Pro (2nd Gen)", reason: "In-ear format rather than over-ear" },
-          { name: "Logitech MX Master 3S", reason: "Currently out of stock" },
-        ],
-      },
+      aiEvaluation: null,
       setAiEvaluation: (evalDetail) => set({ aiEvaluation: evalDetail }),
       journeyStage: "understand",
       setJourneyStage: (stage) => set({ journeyStage: stage }),
       recentQueries: [
-        "Compare Sony WH-1000XM5 and JBL Flip 6",
-        "Is the Logitech MX Master 3S in stock?",
-        "I need wireless headphones under ₹30,000",
-        "What goes well with the Sony WH-1000XM5?",
-        "Anker 7-in-1 USB-C Hub",
+        "Buy 100W USB-C cable under ₹1,500",
+        "Buy Anker 7-in-1 USB-C Hub",
+        "Buy Sony WH-1000XM5 headphones",
       ],
       addRecentQuery: (q) =>
         set((s) => ({
@@ -306,7 +262,7 @@ export const useSafeBuy = create<SafeBuyState>()(
           id: "act_init",
           time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           event: "Session started",
-          detail: "ElectroCore Agentic Commerce core loaded",
+          detail: "SafeBuy Agentic Commerce core initialized",
         },
       ],
       addSessionActivity: (event, detail) =>
@@ -322,16 +278,52 @@ export const useSafeBuy = create<SafeBuyState>()(
           ].slice(0, 25),
         })),
       telemetry: {
-        lastResponseTime: "1.2s",
-        toolCalls: 2,
-        rounds: 3,
-        provider: "OpenRouter",
-        model: "opencode/mimo-2.5",
+        lastResponseTime: "0.8s",
+        toolCalls: 1,
+        rounds: 1,
+        provider: "Grounded Intent Matcher",
+        model: "safebuy-planner-v1",
         fallbackUsed: false,
       },
-      selectedSkuForPayment: "SONY-WH1000XM5",
+      selectedSkuForPayment: "ANKER-USBC-100W-1M",
       setSelectedSkuForPayment: (sku) => set({ selectedSkuForPayment: sku }),
       lastConfirmedOrder: null,
+
+      resetDemo: () => {
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.removeItem("safebuy-v2");
+          } catch {}
+        }
+        set({
+          mandate: getInitialMandate(),
+          audit: [],
+          attempts: [],
+          notices: [],
+          merchantOrders: [],
+          chat: [],
+          phase: "idle",
+          labInject: "none",
+          windowMsLeft: 0,
+          isExecutingLocked: false,
+          pendingCart: null,
+          pendingIntent: null,
+          pendingAttemptId: null,
+          upsellCandidate: null,
+          activeCampaign: null,
+          correlationId: null,
+          confirmedPaymentIds: [],
+          lastConfirmedOrder: null,
+          aiShortlist: [],
+          aiEvaluation: null,
+          recentQueries: [
+            "Buy 100W USB-C cable under ₹1,500",
+            "Buy Anker 7-in-1 USB-C Hub",
+            "Buy Sony WH-1000XM5 headphones",
+          ],
+          lastExplain: "Connected to SafeBuy AI Commerce Assistant.",
+        });
+      },
 
       ensureDefaultMandate: () => {
         const current = get().mandate;
