@@ -20,9 +20,9 @@ SafeBuy exposes an AP2/ACP-compliant machine-readable catalog discovery schema f
       "type": "object",
       "required": ["id", "name", "vpa", "city"],
       "properties": {
-        "id": { "type": "string", "example": "nila-kirana" },
-        "name": { "type": "string", "example": "Nila Kirana Store" },
-        "vpa": { "type": "string", "example": "nilakirana@icici" },
+        "id": { "type": "string", "example": "electrocore-ai" },
+        "name": { "type": "string", "example": "ElectroCore Store" },
+        "vpa": { "type": "string", "example": "electrocore@icici" },
         "city": { "type": "string", "example": "Bengaluru" }
       }
     },

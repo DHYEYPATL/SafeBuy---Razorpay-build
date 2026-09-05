@@ -1,21 +1,21 @@
-# SafeBuy — Official Track 01 Submission Packet
+# ElectroCore (SafeBuy) — Official Track 01 Submission Packet
 
 > **Track:** 01 — Agentic Commerce  
-> **Project Name:** SafeBuy — Bounded AI Buyer with Deterministic Guardrails & Razorpay Test-Mode Orders  
+> **Project Name:** ElectroCore (SafeBuy) — Bounded AI Buyer with Deterministic Guardrails & Razorpay Test-Mode Orders  
 > **Repository:** https://github.com/DHYEYPATL/SafeBuy---Razorpay-build  
 > **Option:** Option B (Making Merchants Transactable by an AI Buyer)
 
 ---
 
 ## 1. What problem does your project solve?
-Autonomous AI agents are emerging to handle grocery and retail purchasing, but no payment rail in India allows silent, unbounded autonomous debit without e-mandate registration and 24-hour pre-debit notifications. Allowing an LLM to call payment APIs directly introduces severe financial risks (hallucinations, prompt injections, and budget overruns). SafeBuy provides the deterministic safety and governance layer that wraps the agent: schema-enforced spending policies, token-level guardrails, durable pre-debit notice records with dwell windows, merchant inventory reservation, and real Razorpay test-mode Order execution with reconciliation.
+Autonomous AI agents are emerging to handle consumer hardware and retail purchasing, but no payment rail in India allows silent, unbounded autonomous debit without e-mandate registration and 24-hour pre-debit notifications. Allowing an LLM to call payment APIs directly introduces severe financial risks (hallucinations, prompt injections, and budget overruns). ElectroCore provides the deterministic safety and governance layer that wraps the agent: schema-enforced spending policies, token-level guardrails, durable pre-debit notice records with dwell windows, merchant inventory reservation, and real Razorpay test-mode Order execution with reconciliation.
 
 ---
 
 ## 2. How did you make the merchant transactable end-to-end?
 We built a dual-layer commerce and payment spine:
-1. **Merchant Order Lifecycle:** When the guardrail approves a cart, SafeBuy creates a durable `MerchantOrder` with status `reserved`, decrementing available stock before the notice window.
-2. **Pre-Debit Notice Record:** SafeBuy issues a `PreDebitNotice` with an `executeAfter` timestamp.
+1. **Merchant Order Lifecycle:** When the guardrail approves a cart, ElectroCore creates a durable `MerchantOrder` with status `reserved`, decrementing available stock before the notice window.
+2. **Pre-Debit Notice Record:** ElectroCore issues a `PreDebitNotice` with an `executeAfter` timestamp.
 3. **Razorpay Orders API:** Our server creates an Order via `POST /v1/orders` passing receipt and attempt correlation IDs in notes.
 4. **Hosted Checkout:** Checkout opens strictly with the server-generated `order_id`.
 5. **Reconciliation & Settlement:** Client handler enters a `pending` state; backend status polling (`GET /v1/payments/:id`) and Webhooks verify `captured` status before `applyConfirm` debits the policy cap and marks the `MerchantOrder` as `paid`.
@@ -41,7 +41,7 @@ We built a dual-layer commerce and payment spine:
   - Cryptographic SHA-256 hash-chained audit trail with verification tool.
   - `MerchantOrder` reservation lifecycle (`reserved` → `paid` / `released`).
 - **SYNTHETIC (Labelled Sandbox Props):**
-  - *Nila Kirana* grocery catalog (stand-in SKUs for agent discovery).
+  - *ElectroCore* tech hardware catalog (stand-in SKUs for agent discovery).
   - Bank pre-debit SMS (simulated in-app notice).
   - Policy registration authentication (simulated consent standing in for bank e-mandate registration).
   - 8-second dwell countdown (compressed demo representation of 24h RBI window).
@@ -57,7 +57,7 @@ Indian regulations forbid silent debits for un-registered recurring mandates and
 ---
 
 ## 5. How is your project modelled after emerging standards like AP2 / UAP?
-SafeBuy models transaction state into three distinct JSON documents modelled after Google/Visa AP2 primitives:
+ElectroCore models transaction state into three distinct JSON documents modelled after Google/Visa AP2 primitives:
 1. **AP2 Intent Mandate:** The human spending policy defining budget, categories, brand boundaries, and expiration.
 2. **AP2 Cart Mandate:** The locked SKU proposal, merchant order reservation, and guardrail proof.
 3. **AP2 Payment Mandate:** The settlement contract linking Razorpay `order_id`, `payment_id`, notice ID, and capture status.
@@ -70,7 +70,7 @@ SafeBuy models transaction state into three distinct JSON documents modelled aft
 3. **Missing Signature Validation:** We implemented timing-safe server-side `HMAC_SHA256(order_id + "|" + payment_id, KEY_SECRET)` verification.
 4. **Category-Only Guardrail Miss:** Category matching alone allowed substituting atta for basmati (both `grains`). We extended `StructuredIntent` with `packTokens` and added token verification in `guardrail.ts` to catch same-category agentic substitutions.
 5. **Dumb Countdown vs. Data Gate:** We transformed the CSS countdown into a durable `PreDebitNotice` data record that must be verified before payment execution.
-6. **Fake UPI PIN Pad:** Replaced the hardcoded PIN 1234 with policy registration consent with configurable validity.
+6. **Fake UPI PIN Pad:** Replaced the hardcoded PIN with policy registration consent with configurable validity.
 
 ---
 
@@ -89,13 +89,13 @@ We explicitly did NOT use an LLM for:
 - Cart safety and brand deny-list enforcement.
 - Cryptographic hash chaining.
 - Payment reconciliation and state mutation.
-LLMs (Grok / heuristic parser) are used **strictly as proposers** to convert natural language into structured JSON (`StructuredIntent`). The deterministic TypeScript guardrail is the **uncompromising law** that governs safety.
+LLMs (Gemini / heuristic parser) are used **strictly as proposers** to convert natural language into structured JSON (`StructuredIntent`). The deterministic TypeScript guardrail is the **uncompromising law** that governs safety.
 
 ---
 
 ## 9. What automated test coverage is implemented?
-40 automated unit tests (`npm run test:unit`) across 7 test suites testing:
-- Token-level guardrail checks (preventing same-category substitutions like atta for basmati).
+41 automated unit tests (`npm run test:unit`) across 7 test suites testing:
+- Token-level guardrail checks (preventing same-category substitutions).
 - Mandate expiration and budget exhaustion blocks.
 - Deny-brand and ₹15,000 AFA threshold enforcement.
 - SHA-256 hash chaining and tamper detection.
@@ -118,7 +118,7 @@ LLMs (Grok / heuristic parser) are used **strictly as proposers** to convert nat
 
 ## 11. What are the non-goals & recognized future work?
 - **Spontaneous On-Demand Silent Debit Non-Goal:** We do not claim silent, zero-human autonomous debit for spontaneous on-demand purchases on Indian rails, because RBI/NPCI regulations require customer-present AFA or pre-debit notifications before funds can be charged.
-- **Recognized-but-Deferred Legal Rail (Future Work):** The single Indian rail scenario where genuine silent debit *is* legally supportable today is a truly recurring, schedule-based low-value replenishment (e.g. weekly atta restock) via UPI Autopay / e-mandates, since that is schedule-based-with-notice by design; we explicitly scoped this out in favor of the harder, more immediate problem of on-demand conversational agentic commerce.
+- **Recognized-but-Deferred Legal Rail (Future Work):** The single Indian rail scenario where genuine silent debit *is* legally supportable today is a truly recurring, schedule-based low-value replenishment via UPI Autopay / e-mandates, since that is schedule-based-with-notice by design; we explicitly scoped this out in favor of the harder, more immediate problem of on-demand conversational agentic commerce.
 - We do not implement speculative multi-merchant web scraping or proprietary crypto tokens.
 - We focus exclusively on Option B: making merchants transactable by AI buyers with verified Razorpay test-mode execution.
 

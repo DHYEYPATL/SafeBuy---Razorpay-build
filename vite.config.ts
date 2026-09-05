@@ -234,8 +234,8 @@ function agentCatalogPlugin(): Plugin {
 
             const manifest = {
               merchant: {
-                id: "nila-kirana",
-                name: "Nila Kirana Store",
+                id: "electrocore-ai",
+                name: "ElectroCore Store",
                 currency: "INR",
                 catalogVersion: "2026.08-v1",
                 supportedCurrencies: ["INR"],

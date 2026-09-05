@@ -1,9 +1,9 @@
-# SafeBuy — Bounded AI Buyer for Agentic Commerce
+# ElectroCore (SafeBuy) — Bounded AI Commerce Assistant
 
 > **Track 01: Agentic Commerce Submission (Option B)**  
 > *Making merchants transactable end-to-end by a bounded AI buyer with deterministic policy guardrails and real Razorpay test-mode execution.*
 
-SafeBuy is a bounded AI purchasing agent that enables autonomous cart planning while enforcing strict spending policies, deterministic semantic guardrails, and compliance with Indian payment regulations.
+ElectroCore (powered by SafeBuy) is a bounded AI purchasing agent that enables autonomous cart planning while enforcing strict spending policies, deterministic semantic guardrails, and compliance with Indian payment regulations.
 
 ---
 
@@ -79,7 +79,7 @@ Judges evaluate what a team chooses **not** to build under real regulatory and r
 | **In-Session Reconciliation (Primary Rail)** | **LIVE** | Backend polling (`GET /v1/payments/:id`) verifying `status === "captured"` before `applyConfirm` debits. |
 | **HMAC Signature Verification** | **LIVE** | Server-side cryptographic verification of Checkout `order_id|payment_id` signatures. |
 | **Hash-Chained Audit Trail** | **LIVE** | Sequential SHA-256 hash chaining with canonical JSON and interactive UI verification. |
-| **Merchant Catalog (Nila Kirana)** | **SYNTHETIC** | Stand-in grocery merchant catalog providing realistic agent-readable SKUs. |
+| **Merchant Catalog (ElectroCore)** | **SYNTHETIC** | Stand-in consumer electronics & hardware catalog providing realistic agent-readable SKUs. |
 | **Bank Pre-debit SMS** | **SYNTHETIC** | Simulated in-app notice standing in for RBI 24h SMS notice. |
 | **Compressed Notify Window (8s)** | **SYNTHETIC** | 8-second dwell standing in for the regulatory 24-hour notification window. |
 

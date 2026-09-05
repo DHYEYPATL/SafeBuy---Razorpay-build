@@ -1596,8 +1596,8 @@ export const useSafeBuy = create<SafeBuyState>()(
             },
           ],
           totalPaise: item.pricePaise,
-          merchantId: "nila-kirana",
-          merchantName: "Nila Kirana",
+          merchantId: MERCHANT_ID,
+          merchantName: MERCHANT_NAME,
           reason: `Bounded upsell applied: Switched to ${item.name} (${upsell.savingsPercent}% savings per unit)`,
         };
 

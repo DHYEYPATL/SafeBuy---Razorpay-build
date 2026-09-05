@@ -1,4 +1,11 @@
-import type { AuditRecord, CartLine, Mandate, ProposedCart } from "./types";
+import {
+  MERCHANT_ID,
+  MERCHANT_NAME,
+  type AuditRecord,
+  type CartLine,
+  type Mandate,
+  type ProposedCart,
+} from "./types";
 import { getItem } from "./catalog";
 import { lookupAgentIdentity } from "./identity";
 
@@ -161,7 +168,7 @@ export function evaluateActiveCampaigns(params: {
 /**
  * Converts an active campaign offer into a structured ProposedCart for checkout execution
  */
-export function buildCampaignCart(offer: CampaignOffer, merchantId = "nila-kirana", merchantName = "Nila Kirana"): ProposedCart {
+export function buildCampaignCart(offer: CampaignOffer, merchantId = MERCHANT_ID, merchantName = MERCHANT_NAME): ProposedCart {
   return {
     lines: offer.lines,
     totalPaise: offer.discountedTotalPaise,

@@ -1633,7 +1633,7 @@ function AgentRegistryPanel() {
       <div className="p-6 rounded-2xl bg-[#0f1118] border border-white/10 space-y-5 shadow-lg">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-4">
           <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <div className="size-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-sm">
               <Users className="size-5" />
             </div>
             <div>
@@ -1652,15 +1652,29 @@ function AgentRegistryPanel() {
           </div>
         </div>
 
+        {/* Visual Trust Score Progress Bar */}
+        <div className="space-y-1.5 font-mono text-[11px]">
+          <div className="flex justify-between text-zinc-400">
+            <span>REPUTATION TIER: HIGH TRUST</span>
+            <span className="text-emerald-400 font-bold">{agentIdentity.trustScore}% Verified</span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-white/5 overflow-hidden border border-white/10">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300 transition-all duration-500"
+              style={{ width: `${agentIdentity.trustScore}%` }}
+            />
+          </div>
+        </div>
+
         {/* Identity Details Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
           <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
-            <span className="text-[10px] text-zinc-500 uppercase">ED25519 PUBLIC KEY</span>
-            <p className="text-emerald-300 break-all">{agentIdentity.publicKey}</p>
+            <span className="text-[10px] text-zinc-500 uppercase font-bold">ED25519 PUBLIC KEY</span>
+            <p className="text-emerald-300 break-all text-[11px]">{agentIdentity.publicKey}</p>
           </div>
           <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
-            <span className="text-[10px] text-zinc-500 uppercase">DELEGATION BOUNDS</span>
-            <p className="text-zinc-200">Max ₹50,000 / txn · Dual-rail dwell required</p>
+            <span className="text-[10px] text-zinc-500 uppercase font-bold">DELEGATION BOUNDS</span>
+            <p className="text-zinc-200">Max ₹50,000 / txn · Dwell dwell required</p>
           </div>
         </div>
 
@@ -1670,16 +1684,47 @@ function AgentRegistryPanel() {
             GRANTED CAPABILITY CLAIMS
           </p>
           <div className="flex flex-wrap gap-2">
-            {["catalog:read", "intent:parse_bounded", "cart:propose", "payment:dwell_authorize", "audit:chain_commit"].map(
-              (claim) => (
-                <span
-                  key={claim}
-                  className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-zinc-300 font-mono text-[11px]"
-                >
-                  ✓ {claim}
-                </span>
-              ),
-            )}
+            {[
+              "catalog:read",
+              "intent:parse_bounded",
+              "cart:propose",
+              "payment:dwell_authorize",
+              "audit:chain_commit",
+            ].map((claim) => (
+              <span
+                key={claim}
+                className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-zinc-300 font-mono text-[11px]"
+              >
+                ✓ {claim}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Governance & Trust Safeguards Breakdown */}
+      <div className="p-5 rounded-2xl bg-[#0f1118] border border-white/10 space-y-3 shadow-lg">
+        <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400">
+          Agent Governance & Anti-Gaming Rules
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-[11px] text-zinc-300">
+          <div className="p-3 rounded-xl bg-black/30 border border-white/5 space-y-1">
+            <span className="text-white font-bold">Volume Dampening</span>
+            <p className="text-zinc-400 text-[10px] leading-relaxed">
+              Rapid sub-second micro transactions damp reputation gains to prevent trust gaming.
+            </p>
+          </div>
+          <div className="p-3 rounded-xl bg-black/30 border border-white/5 space-y-1">
+            <span className="text-white font-bold">Replay Window</span>
+            <p className="text-zinc-400 text-[10px] leading-relaxed">
+              Strict 30-second timestamp freshness and nonce deduplication prevents transaction replay.
+            </p>
+          </div>
+          <div className="p-3 rounded-xl bg-black/30 border border-white/5 space-y-1">
+            <span className="text-white font-bold">Fail-Closed Default</span>
+            <p className="text-zinc-400 text-[10px] leading-relaxed">
+              Unknown agents or degraded trust scores (&lt;30) reject authorization immediately with zero debit.
+            </p>
           </div>
         </div>
       </div>
@@ -1918,7 +1963,7 @@ function GateOverlay() {
           </div>
           <div className="flex justify-between">
             <span>Merchant:</span>
-            <span className="text-emerald-400 font-semibold">{MERCHANT_NAME} (Razorpay Dual-Rail)</span>
+            <span className="text-emerald-400 font-semibold">{MERCHANT_NAME} Store · Razorpay Settlement Rail</span>
           </div>
         </div>
 
@@ -1935,8 +1980,9 @@ function GateOverlay() {
               variant="outline"
               onClick={() => useSafeBuy.getState().extendWindow(10000)}
               className="border-white/10 hover:bg-white/10 text-zinc-300 text-xs h-10 px-4"
+              title="Demo control: extend pre-debit dwell period by 10 seconds"
             >
-              +10s
+              +10s (Demo)
             </Button>
           </div>
 
