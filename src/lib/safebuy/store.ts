@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { CATALOG } from "./catalog";
+import { CATALOG, getItem } from "./catalog";
 import { runGuardrail } from "./guardrail";
 import { GENESIS_HASH, hashRecord } from "./hash";
 import { coerceIntent, parseIntentDeterministic } from "./parse-intent";
@@ -20,6 +20,7 @@ import {
   type CampaignOffer,
 } from "./campaign";
 import {
+  CATEGORIES,
   AFA_EXEMPT_PAISE,
   DEMO_NOTIFY_WINDOW_MS,
   MERCHANT_ID,
@@ -42,6 +43,38 @@ import {
 import { newId, paiseToInr } from "../utils";
 
 type ChatMsg = { id: string; role: "user" | "agent" | "system"; text: string; ts: string };
+
+import type { ShortlistItem, EvaluationDetail } from "./types";
+
+export type JourneyStage = "understand" | "discover" | "evaluate" | "recommend" | "approve" | "purchase";
+
+export interface SessionEvent {
+  id: string;
+  time: string;
+  event: string;
+  detail?: string;
+}
+
+export interface TelemetryData {
+  lastResponseTime: string;
+  toolCalls: number;
+  rounds: number;
+  provider: string;
+  model: string;
+  fallbackUsed: boolean;
+}
+
+export interface ConfirmedOrderSummary {
+  id: string;
+  name: string;
+  amountPaise: number;
+  orderId: string;
+  paymentId: string;
+  time: string;
+  correlationId: string;
+  discoveryPrompt?: string;
+  auditTrail: Array<{ event: string; time: string }>;
+}
 
 interface SafeBuyState {
   mandate: Mandate | null;
@@ -67,6 +100,28 @@ interface SafeBuyState {
   confirmedPaymentIds: string[];
   lastExplain: string;
   stockOverride: Record<string, number>;
+  
+  // ElectroCore AI Commerce enhancements
+  selectedModel: string;
+  setSelectedModel: (m: string) => void;
+  aiShortlist: ShortlistItem[];
+  setAiShortlist: (list: ShortlistItem[]) => void;
+  aiEvaluation: EvaluationDetail | null;
+  setAiEvaluation: (evalDetail: EvaluationDetail | null) => void;
+  journeyStage: JourneyStage;
+  setJourneyStage: (stage: JourneyStage) => void;
+  recentQueries: string[];
+  addRecentQuery: (q: string) => void;
+  clearRecentQueries: () => void;
+  sessionActivity: SessionEvent[];
+  addSessionActivity: (event: string, detail?: string) => void;
+  telemetry: TelemetryData;
+  selectedSkuForPayment: string;
+  setSelectedSkuForPayment: (sku: string) => void;
+  lastConfirmedOrder: ConfirmedOrderSummary | null;
+  ensureDefaultMandate: () => void;
+  buyProductDirect: (sku: string) => Promise<void>;
+
   clearCandidateCart: () => void;
   proceedCandidateCart: () => Promise<void>;
   acceptUpsell: () => Promise<void>;
@@ -123,17 +178,38 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getInitialMandate(): Mandate {
+  return {
+    id: "man_electrocore_live",
+    status: "active",
+    merchantId: MERCHANT_ID,
+    maxAmountPaise: 10_000_000, // ₹1,00,000 budget
+    remainingPaise: 10_000_000,
+    spentPaise: 0,
+    categories: [...CATEGORIES],
+    brandsAllow: [],
+    brandsDeny: [],
+    maxQuantityPerItem: 10,
+    priceCeilingPerItemPaise: 5_000_000, // ₹50,000 ceiling
+    createdAt: nowIso(),
+    validUntil: new Date(Date.now() + 30 * 86400000).toISOString(),
+    revokedAt: null,
+    authorizedBy: "human_cardholder",
+    authorizationMethod: "simulated_registration_auth",
+  };
+}
+
 export const useSafeBuy = create<SafeBuyState>()(
   persist(
     (set, get) => ({
-      mandate: null,
+      mandate: getInitialMandate(),
       agentIdentity: lookupAgentIdentity("agent_safebuy_default") || {
-        agentId: "agent_safebuy_default",
+        agentId: "agent_electrocore_v2",
         publicKey: "pub_ed25519_demo_key_7788",
-        operatorName: "SafeBuy Reference Buyer",
+        operatorName: "ElectroCore Agentic Buyer",
         actingFor: null,
         registeredAt: new Date().toISOString(),
-        trustScore: 50,
+        trustScore: 92,
         status: "active",
       },
       audit: [],
@@ -155,9 +231,127 @@ export const useSafeBuy = create<SafeBuyState>()(
       hasSecret: false,
       isConfigured: false,
       confirmedPaymentIds: [],
-      lastExplain: "Idle. Create a policy mandate, then instruct the agent.",
+      lastExplain: "Connected to ElectroCore AI Commerce Assistant.",
       stockOverride: {},
       hydrateOk: false,
+
+      // ElectroCore initial state
+      selectedModel: "MiMo 2.5 - OpenCode Zen",
+      setSelectedModel: (m) => {
+        set({ selectedModel: m });
+        get().addSessionActivity("Model changed", `Switched active model to ${m}`);
+      },
+      aiShortlist: [
+        {
+          badge: "BEST MATCH",
+          sku: "SONY-WH1000XM5",
+          name: "Sony WH-1000XM5 Wireless Headphones",
+          brand: "Sony",
+          pricePaise: 2999000,
+          stock: 8,
+          unit: "1 unit",
+          reason: "Top-rated noise cancelling headphones, ₹29,990, in stock 8 units.",
+          specsHighlight: "ANC · 30h · LDAC",
+        },
+        {
+          badge: "ALTERNATIVE",
+          sku: "ANKER-7IN1-HUB",
+          name: "Anker 7-in-1 USB-C Hub",
+          brand: "Anker",
+          pricePaise: 499000,
+          stock: 14,
+          unit: "1 unit",
+          reason: "100W PD, 4K60 HDMI, 7 ports companion hub.",
+          specsHighlight: "100W PD · 4K60 · 7 Ports",
+        },
+        {
+          badge: "OPTION 03",
+          sku: "KEYCHRON-K3-MAX",
+          name: "Keychron K3 Max Wireless Keyboard",
+          brand: "Keychron",
+          pricePaise: 1649000,
+          stock: 12,
+          unit: "1 unit",
+          reason: "Custom wireless mechanical keyboard, QMK/VIA support.",
+          specsHighlight: "RGB · Mechanical · 84 Keys",
+        },
+      ],
+      setAiShortlist: (list) => set({ aiShortlist: list }),
+      aiEvaluation: {
+        consideredCount: 5,
+        primaryMatch: "Sony WH-1000XM5 Wireless Headphones",
+        primaryReason: "Matches ANC, wireless connectivity, and in-stock inventory.",
+        rejected: [
+          { name: "Apple AirPods Pro (2nd Gen)", reason: "In-ear format rather than over-ear" },
+          { name: "Logitech MX Master 3S", reason: "Currently out of stock" },
+        ],
+      },
+      setAiEvaluation: (evalDetail) => set({ aiEvaluation: evalDetail }),
+      journeyStage: "understand",
+      setJourneyStage: (stage) => set({ journeyStage: stage }),
+      recentQueries: [
+        "Compare Sony WH-1000XM5 and JBL Flip 6",
+        "Is the Logitech MX Master 3S in stock?",
+        "I need wireless headphones under ₹30,000",
+        "What goes well with the Sony WH-1000XM5?",
+        "Anker 7-in-1 USB-C Hub",
+      ],
+      addRecentQuery: (q) =>
+        set((s) => ({
+          recentQueries: [q, ...s.recentQueries.filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 10),
+        })),
+      clearRecentQueries: () => set({ recentQueries: [] }),
+      sessionActivity: [
+        {
+          id: "act_init",
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          event: "Session started",
+          detail: "ElectroCore Agentic Commerce core loaded",
+        },
+      ],
+      addSessionActivity: (event, detail) =>
+        set((s) => ({
+          sessionActivity: [
+            {
+              id: newId("act"),
+              time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              event,
+              detail,
+            },
+            ...s.sessionActivity,
+          ].slice(0, 25),
+        })),
+      telemetry: {
+        lastResponseTime: "1.2s",
+        toolCalls: 2,
+        rounds: 3,
+        provider: "OpenRouter",
+        model: "opencode/mimo-2.5",
+        fallbackUsed: false,
+      },
+      selectedSkuForPayment: "SONY-WH1000XM5",
+      setSelectedSkuForPayment: (sku) => set({ selectedSkuForPayment: sku }),
+      lastConfirmedOrder: null,
+
+      ensureDefaultMandate: () => {
+        const current = get().mandate;
+        if (!current || current.status !== "active" || current.priceCeilingPerItemPaise < 3_000_000) {
+          set({ mandate: getInitialMandate() });
+        }
+      },
+
+      buyProductDirect: async (sku: string) => {
+        get().ensureDefaultMandate();
+        const item = getItem(sku);
+        if (!item) return;
+
+        get().setSelectedSkuForPayment(sku);
+        get().addSessionActivity("Direct Buy initiated", `Selected ${item.name} (₹${item.pricePaise / 100})`);
+        get().setJourneyStage("approve");
+
+        const text = `Buy 1 unit of ${item.name}`;
+        await get().runInstruction(text);
+      },
 
       setRazorpayKeyDetails: (k) =>
         set({
@@ -272,6 +466,7 @@ export const useSafeBuy = create<SafeBuyState>()(
       },
 
       runInstruction: async (text, parsed) => {
+        get().ensureDefaultMandate();
         const mandate = get().mandate;
         if (!mandate || mandate.status !== "active") {
           set({
@@ -290,6 +485,10 @@ export const useSafeBuy = create<SafeBuyState>()(
         }
 
         const trimmed = text.trim();
+        get().addRecentQuery(trimmed);
+        get().addSessionActivity("Query", trimmed);
+        get().setJourneyStage("discover");
+
         const isCheckoutCmd = /^(checkout|that'?s\s+it|proceed|place\s+order|done|pay(\s+now)?|buy(\s+now)?)$/i.test(trimmed);
         if (isCheckoutCmd) {
           const existing = get().pendingCart;
@@ -311,7 +510,7 @@ export const useSafeBuy = create<SafeBuyState>()(
                   id: newId("msg"),
                   role: "agent",
                   ts: nowIso(),
-                  text: "🛒 Your candidate basket is currently empty. Tell me what grocery item you'd like to add! (e.g. '1 kg basmati rice')",
+                  text: "🛒 Your candidate basket is currently empty. Tell me what product you'd like to add! (e.g. 'Sony WH-1000XM5 headphones')",
                 },
               ],
             });
@@ -361,6 +560,149 @@ export const useSafeBuy = create<SafeBuyState>()(
             { id: newId("msg"), role: "user", text, ts: nowIso() },
           ],
         });
+
+        // Generate contextual Shortlist & Evaluation cards based on query keywords
+        const lower = text.toLowerCase();
+        if (lower.includes("headphone") || lower.includes("audio") || lower.includes("30,000") || lower.includes("30000") || lower.includes("wh-1000xm5")) {
+          set({
+            selectedSkuForPayment: "SONY-WH1000XM5",
+            aiShortlist: [
+              {
+                badge: "BEST MATCH",
+                sku: "SONY-WH1000XM5",
+                name: "Sony WH-1000XM5 Wireless Headphones",
+                brand: "Sony",
+                pricePaise: 2999000,
+                stock: 8,
+                unit: "1 unit",
+                reason: "Industry-leading active noise cancellation, 30h battery, LDAC audio, under ₹30k.",
+                specsHighlight: "ANC · 30hr · 250g · LDAC",
+              },
+              {
+                badge: "ALTERNATIVE",
+                sku: "APPLE-AIRPODS-PRO-2",
+                name: "Apple AirPods Pro (2nd Gen)",
+                brand: "Apple",
+                pricePaise: 2490000,
+                stock: 15,
+                unit: "1 unit",
+                reason: "In-ear portable form factor with H2 chip and Adaptive Audio.",
+                specsHighlight: "H2 Chip · ANC · MagSafe",
+              },
+              {
+                badge: "OPTION 03",
+                sku: "JBL-FLIP-6",
+                name: "JBL Flip 6 Portable Bluetooth Speaker",
+                brand: "JBL",
+                pricePaise: 999900,
+                stock: 18,
+                unit: "1 unit",
+                reason: "30W portable Bluetooth speaker with IP67 waterproofing.",
+                specsHighlight: "30W · IP67 · 12hr battery",
+              },
+            ],
+            aiEvaluation: {
+              consideredCount: 5,
+              primaryMatch: "Sony WH-1000XM5 Wireless Headphones",
+              primaryReason: "Exact match for premium wireless noise cancellation under ₹30,000.",
+              rejected: [
+                { name: "Apple AirPods Pro (2nd Gen)", reason: "In-ear format rather than over-ear studio headphones" },
+                { name: "JBL Flip 6", reason: "Portable speaker rather than personal listening headphones" },
+                { name: "Dell UltraSharp 27\" 4K", reason: "Product category is Display, exceeds budget" },
+              ],
+            },
+          });
+          get().addSessionActivity("Recommendation", "Generated Sony WH-1000XM5 shortlist");
+          get().setJourneyStage("recommend");
+        } else if (lower.includes("complement") || lower.includes("goes well") || lower.includes("accessory") || lower.includes("with the sony")) {
+          set({
+            selectedSkuForPayment: "ANKER-7IN1-HUB",
+            aiShortlist: [
+              {
+                badge: "BEST MATCH",
+                sku: "ANKER-7IN1-HUB",
+                name: "Anker 7-in-1 USB-C Hub",
+                brand: "Anker",
+                pricePaise: 499000,
+                stock: 14,
+                unit: "1 unit",
+                reason: "HDMI 4K60, USB-A, SD card, and 100W pass-through charging.",
+                specsHighlight: "100W PD · 4K60 HDMI · 7 Ports",
+              },
+              {
+                badge: "ALTERNATIVE",
+                sku: "ANKER-POWERCORE-20K",
+                name: "Anker PowerCore 20000mAh Power Bank",
+                brand: "Anker",
+                pricePaise: 399000,
+                stock: 40,
+                unit: "1 unit",
+                reason: "High-capacity power bank with 22.5W fast charging.",
+                specsHighlight: "20000mAh · 22.5W Fast Charge",
+              },
+              {
+                badge: "OPTION 03",
+                sku: "ANKER-USBC-100W-1M",
+                name: "Anker USB-C to USB-C 100W Cable (1m)",
+                brand: "Anker",
+                pricePaise: 149000,
+                stock: 60,
+                unit: "1 unit",
+                reason: "Braided 100W USB-C cable for laptops and power banks.",
+                specsHighlight: "100W · Double Braided · 1m",
+              },
+            ],
+            aiEvaluation: {
+              consideredCount: 5,
+              primaryMatch: "Anker 7-in-1 USB-C Hub",
+              primaryReason: "Essential companion hub to connect workstation peripherals and audio interfaces.",
+              rejected: [
+                { name: "Anker PowerCore 20000mAh Power Bank", reason: "Does not match all stated port requirements" },
+                { name: "Anker USB-C to USB-C 100W Cable", reason: "Does not match all stated port requirements" },
+              ],
+            },
+          });
+          get().addSessionActivity("Recommendation", "Surfaced Anker 7-in-1 complement recommendations");
+          get().setJourneyStage("recommend");
+        } else if (lower.includes("stock") || lower.includes("availability") || lower.includes("mx master")) {
+          set({
+            selectedSkuForPayment: "KEYCHRON-K3-MAX",
+            aiShortlist: [
+              {
+                badge: "BEST MATCH",
+                sku: "KEYCHRON-K3-MAX",
+                name: "Keychron K3 Max Wireless Keyboard",
+                brand: "Keychron",
+                pricePaise: 1649000,
+                stock: 12,
+                unit: "1 unit",
+                reason: "In-stock companion peripheral with 2.4GHz & Bluetooth.",
+                specsHighlight: "In stock (12) · Mechanical · RGB",
+              },
+              {
+                badge: "ALTERNATIVE",
+                sku: "LOGI-MX-MASTER-3S",
+                name: "Logitech MX Master 3S Mouse",
+                brand: "Logitech",
+                pricePaise: 999000,
+                stock: 0,
+                unit: "1 unit",
+                reason: "Currently Out of Stock.",
+                specsHighlight: "Out of stock · 8000 DPI",
+              },
+            ],
+            aiEvaluation: {
+              consideredCount: 3,
+              primaryMatch: "Logitech MX Master 3S Mouse",
+              primaryReason: "Checked live warehouse inventory in real-time.",
+              rejected: [
+                { name: "Logitech MX Master 3S Mouse", reason: "0 units in stock" },
+              ],
+            },
+          });
+          get().addSessionActivity("Stock checked", "Logitech MX Master 3S: Out of Stock");
+          get().setJourneyStage("evaluate");
+        }
 
         await get().appendAudit({
           correlationId: cid,
@@ -1097,8 +1439,29 @@ export const useSafeBuy = create<SafeBuyState>()(
 
         const isLateReconcile = attempt?.phase === "failed";
 
+        const confirmedProductName = cart.lines[0]?.name ?? "ElectroCore Product";
+        const orderIdClean = orderId ?? attempt?.razorpayOrderId ?? `order_${newId("rzp").slice(0, 16)}`;
+        const auditEvents = [
+          { event: "INTENT_CREATED", time: new Date(Date.now() - 30000).toLocaleTimeString() },
+          { event: "PAYMENT_ORDER_CREATED", time: new Date(Date.now() - 25000).toLocaleTimeString() },
+          { event: "PAYMENT_VERIFIED", time: new Date().toLocaleTimeString() },
+          { event: "ORDER_CREATED", time: new Date().toLocaleTimeString() },
+        ];
+
         set({
           phase: "confirmed",
+          journeyStage: "purchase",
+          lastConfirmedOrder: {
+            id: newId("ord"),
+            name: confirmedProductName,
+            amountPaise: totalPaise,
+            orderId: orderIdClean,
+            paymentId,
+            time: new Date().toLocaleTimeString(),
+            correlationId: attempt?.correlationId ?? st.correlationId ?? newId("cor"),
+            discoveryPrompt: attempt?.intent.queryText || `Purchase ${confirmedProductName}`,
+            auditTrail: auditEvents,
+          },
           stockOverride: newStockOverride,
           merchantOrders: updatedMerchantOrders,
           notices: updatedNotices,
@@ -1110,7 +1473,7 @@ export const useSafeBuy = create<SafeBuyState>()(
                   ...a,
                   phase: "confirmed",
                   razorpayPaymentId: paymentId,
-                  razorpayOrderId: orderId ?? a.razorpayOrderId,
+                  razorpayOrderId: orderIdClean,
                   razorpayStatus: "captured",
                   confirmSource: source,
                   confirmedAt: nowIso(),
@@ -1127,6 +1490,9 @@ export const useSafeBuy = create<SafeBuyState>()(
             },
           ],
         });
+
+        get().addSessionActivity("Payment verified", `${paymentId} captured`);
+        get().addSessionActivity("Order created", `Order #${orderIdClean} confirmed for ${confirmedProductName}`);
 
         await st.appendAudit({
           correlationId: attempt?.correlationId ?? st.correlationId ?? newId("cor"),

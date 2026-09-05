@@ -50,12 +50,13 @@ export function parseIntentDeterministic(text: string): StructuredIntent {
     queryText: text.trim(),
   };
 
-  // 1. Budget extraction: "under 150", "under ₹150", "max 200", "around 200"
+  // 1. Budget extraction: "under 150", "under ₹30,000", "max 200", "around 200"
   const underMatch =
-    t.match(/(?:under|below|max|maximum|within|around|upto|up to)\s*(?:rs\.?|₹)?\s*(\d+)/i) ||
-    t.match(/(?:rs\.?|₹)\s*(\d+)/i);
+    t.match(/(?:under|below|max|maximum|within|around|upto|up to)\s*(?:rs\.?|₹)?\s*([\d,]+)/i) ||
+    t.match(/(?:rs\.?|₹)\s*([\d,]+)/i);
   if (underMatch) {
-    intent.maxAmountPaise = Number(underMatch[1]) * 100;
+    const rawVal = underMatch[1]?.replace(/,/g, "") ?? "0";
+    intent.maxAmountPaise = Number(rawVal) * 100;
   }
 
   // 2. Pack size hint: e.g. "1kg", "1 kg", "5kg", "500g", "200g", "1l", "5l"
@@ -75,6 +76,27 @@ export function parseIntentDeterministic(text: string): StructuredIntent {
   }
 
   // 4. Categories detection
+  // Tech categories
+  if (t.includes("headphone") || t.includes("audio") || t.includes("earbud") || t.includes("earphone") || t.includes("speaker") || t.includes("airpods") || t.includes("wh-1000xm5") || t.includes("flip 6")) {
+    intent.categories.push("audio");
+  }
+  if (t.includes("mouse") || t.includes("keyboard") || t.includes("peripheral") || t.includes("mx master") || t.includes("keychron") || t.includes("monitor") || t.includes("ultrasharp")) {
+    intent.categories.push("peripherals");
+  }
+  if (t.includes("power") || t.includes("powerbank") || t.includes("battery") || t.includes("charger") || t.includes("powercore")) {
+    intent.categories.push("power");
+  }
+  if (t.includes("cable") || t.includes("wire") || t.includes("cord") || t.includes("100w cable")) {
+    intent.categories.push("cables");
+  }
+  if (t.includes("ssd") || t.includes("storage") || t.includes("drive") || t.includes("hard drive") || t.includes("t7")) {
+    intent.categories.push("storage");
+  }
+  if (t.includes("hub") || t.includes("dock") || t.includes("adapter") || t.includes("accessory") || t.includes("accessories") || t.includes("7-in-1")) {
+    intent.categories.push("accessories");
+  }
+
+  // Grocery categories (backwards compatibility)
   if (t.includes("rice") || t.includes("basmati") || t.includes("atta") || t.includes("wheat") || t.includes("grain")) {
     intent.categories.push("grains");
   }

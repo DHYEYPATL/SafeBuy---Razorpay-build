@@ -1,9 +1,15 @@
-export const AFA_EXEMPT_PAISE = 1_500_000; // ₹15,000
+export const AFA_EXEMPT_PAISE = 5_000_000; // ₹50,000 ceiling for high-end electronics
 export const DEMO_NOTIFY_WINDOW_MS = 8_000; // 8 seconds for readable dwell
-export const MERCHANT_ID = "nila-kirana";
-export const MERCHANT_NAME = "Nila Kirana";
+export const MERCHANT_ID = "electrocore-ai";
+export const MERCHANT_NAME = "ElectroCore";
 
 export const CATEGORIES = [
+  "audio",
+  "peripherals",
+  "power",
+  "cables",
+  "storage",
+  "accessories",
   "grains",
   "pulses",
   "spices",
@@ -62,7 +68,7 @@ export interface StructuredIntent {
   brandsDeny: string[];
   maxQuantityPerItem: number | null;
   priceCeilingPerItemPaise: number | null;
-  packTokens: string[];        // Specific search terms e.g. ["basmati"]
+  packTokens: string[];        // Specific search terms e.g. ["basmati", "headphones"]
   excludeTokens: string[];     // Denied terms e.g. ["atta", "chocolate"]
   qty: number | null;          // Number of packs requested
   packSizeHint: string | null; // e.g. "1kg", "5kg", "500g"
@@ -97,6 +103,30 @@ export interface CatalogItem {
   unit: string;
   stock: number;
   description: string;
+  specs?: Record<string, string | number>;
+  imageEmoji?: string;
+  rating?: number;
+  tags?: string[];
+  isFeatured?: boolean;
+}
+
+export interface ShortlistItem {
+  badge: "BEST MATCH" | "ALTERNATIVE" | "OPTION 03" | "RECOMMENDED";
+  sku: string;
+  name: string;
+  brand: string;
+  pricePaise: number;
+  stock: number;
+  unit: string;
+  reason: string;
+  specsHighlight?: string;
+}
+
+export interface EvaluationDetail {
+  consideredCount: number;
+  primaryMatch: string;
+  primaryReason: string;
+  rejected: Array<{ name: string; reason: string }>;
 }
 
 export interface CartLine {
