@@ -66,22 +66,25 @@ Judges evaluate what a team chooses **not** to build under real regulatory and r
 
 ---
 
-## 4. Live Core vs. Synthetic Sandbox Props
+## 4. Live Unique vs. Synthetic Honesty Matrix
 
 | Component | Layer | Description |
 |-----------|-------|-------------|
-| **Structured Intent Mandate** | **LIVE** | Hard spend limits, allowed/denied brands, categories, per-item ceilings, and validity expiry (`validUntil`). |
-| **Deterministic Guardrail** | **LIVE** | Validates cart items against schema **and** `packTokens`, catching same-category substitutions (e.g. atta for basmati). |
-| **Deterministic Bounded Upsell** | **LIVE** | Evaluates economy pack sizes (e.g. 5kg saving 12%/kg) bounded by remaining mandate limits. |
-| **Merchant Order & Stock Reservation** | **LIVE** | Creates durable `MerchantOrder` reserving stock before notice window; settles to `paid` or releases on abort. |
-| **Pre-Debit Notice Record** | **LIVE** | Creates durable `PreDebitNotice` data record with `executeAfter` timestamp and hold/extend controls. |
-| **Razorpay Orders API** | **LIVE** | Real `POST /v1/orders` created before debit with receipt ID, correlation IDs, and attempt notes. |
-| **In-Session Reconciliation (Primary Rail)** | **LIVE** | Backend polling (`GET /v1/payments/:id`) verifying `status === "captured"` before `applyConfirm` debits. |
-| **HMAC Signature Verification** | **LIVE** | Server-side cryptographic verification of Checkout `order_id|payment_id` signatures. |
-| **Hash-Chained Audit Trail** | **LIVE** | Sequential SHA-256 hash chaining with canonical JSON and interactive UI verification. |
-| **Merchant Catalog (ElectroCore)** | **SYNTHETIC** | Stand-in consumer electronics & hardware catalog providing realistic agent-readable SKUs. |
-| **Bank Pre-debit SMS** | **SYNTHETIC** | Simulated in-app notice standing in for RBI 24h SMS notice. |
-| **Compressed Notify Window (8s)** | **SYNTHETIC** | 8-second dwell standing in for the regulatory 24-hour notification window. |
+| **Structured Mandate** | **LIVE UNIQUE** | Hard spend limits (₹1,500 demo default), allowed/denied brands, categories, per-item ceilings, and validity expiry (`validUntil`). |
+| **Deterministic Guardrail + packTokens** | **LIVE UNIQUE** | Validates cart items against schema **and** `packTokens`, catching same-category substitutions (e.g. atta for basmati). |
+| **Bounded Upsell Logic** | **LIVE UNIQUE** | Evaluates economy pack sizes (e.g. 5kg saving 12%/kg) strictly bounded by remaining mandate limits. |
+| **MerchantOrder Reserve → Paid / Released** | **LIVE UNIQUE** | Creates durable `MerchantOrder` reserving stock before notice window; settles to `paid` or releases on abort. |
+| **PreDebitNotice Record** | **LIVE UNIQUE** | Creates durable `PreDebitNotice` data record with `executeAfter` timestamp and hold/extend controls (the record, not the clock skin). |
+| **Razorpay Orders API (`POST /v1/orders`)** | **LIVE UNIQUE** | Mandatory server Order creation before debit with receipt ID, correlation IDs, and attempt notes. |
+| **Checkout.js + HMAC Signature Verification** | **LIVE UNIQUE** | Server-side cryptographic verification of Checkout `order_id\|payment_id` signatures. |
+| **Fetch Reconciliation (`GET /v1/payments/:id`)** | **LIVE UNIQUE** | Sole state mutator: `applyConfirm` debits mandate and marks order `paid` strictly upon verified `status === "captured"`. |
+| **Hash-Chained Audit Ledger** | **LIVE UNIQUE** | Sequential SHA-256 hash chaining with canonical JSON and interactive UI verification. |
+| **SafeBuy / Hardware & Grocery Catalog** | **SYNTHETIC** | Stand-in consumer electronics & grocery catalog providing realistic agent-readable SKUs and mock inventory. |
+| **Bank Pre-Debit SMS** | **SYNTHETIC** | Simulated in-app notice standing in for RBI 24h SMS notice. |
+| **Compressed Notify Window (8s dwell)** | **SYNTHETIC** | 8-second dwell standing in for the regulatory 24-hour notification window. |
+| **Mandate Registration Auth Checkbox** | **SYNTHETIC** | UI acknowledgement standing in for live bank e-mandate registration. |
+
+> **Reference Patterns (Not badged as Live Unique):** MCP stdio server (`src/mcp/`), x402 monetization pattern (`src/lib/safebuy/x402.ts`), Agent Ed25519 identity pattern (`src/lib/safebuy/identity.ts`), and offline webhook signature parser.
 
 ---
 

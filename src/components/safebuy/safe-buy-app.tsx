@@ -210,6 +210,7 @@ function Header({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-display font-bold text-base tracking-tight text-white">{MERCHANT_NAME}</span>
+              <LayerBadge layer="synthetic" />
               <span className="text-[10px] uppercase font-mono tracking-widest px-1.5 py-0.5 rounded bg-white/5 text-zinc-400 border border-white/5">
                 BOUNDED AI COMMERCE
               </span>
@@ -228,9 +229,10 @@ function Header({
 
         {/* Mandate Balance Display */}
         {mandate ? (
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-[#12151e] border border-white/10 text-xs">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-[#12151e] border border-white/10 text-xs">
             <span className="text-zinc-400 text-[11px]">Mandate:</span>
             <span className="font-mono font-semibold text-emerald-400">{paiseToInr(mandate.remainingPaise)}</span>
+            <LayerBadge layer="live" />
           </div>
         ) : null}
 
@@ -597,9 +599,12 @@ function AIShoppingPanel({
       {aiShortlist.length > 0 && (
         <div className="space-y-3 pt-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-emerald-400 font-bold">
-              <Sparkles className="size-3.5" />
-              <span>AI SHORTLIST</span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-emerald-400 font-bold">
+                <Sparkles className="size-3.5" />
+                <span>AI SHORTLIST</span>
+              </div>
+              <LayerBadge layer="synthetic" />
             </div>
             <span className="text-[11px] text-zinc-500 font-mono">{aiShortlist.length} matches analyzed</span>
           </div>
@@ -675,7 +680,10 @@ function AIShoppingPanel({
       {aiEvaluation && (
         <div className="p-4 rounded-xl bg-[#0f1118] border border-white/5 space-y-2.5 text-xs">
           <div className="flex items-center justify-between text-zinc-400 font-mono text-[11px]">
-            <span className="uppercase font-bold tracking-wider text-zinc-300">AI EVALUATION TRANSPARENCY</span>
+            <div className="flex items-center gap-2">
+              <span className="uppercase font-bold tracking-wider text-zinc-300">AI EVALUATION TRANSPARENCY</span>
+              <LayerBadge layer="live" />
+            </div>
             <span>{aiEvaluation.consideredCount} options evaluated</span>
           </div>
 
@@ -797,7 +805,10 @@ function MandatePanel() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Mandate Policy</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Mandate Policy</h1>
+          <LayerBadge layer="live" />
+        </div>
         <p className="text-xs text-zinc-400 mt-1">
           Configure financial limits and brand constraints for autonomous agent transactions (Demo default: ₹1,500 budget).
         </p>
@@ -845,6 +856,7 @@ function MandatePanel() {
               className="accent-emerald-500 size-4"
             />
             <label htmlFor="auth-mandate">Acknowledge simulated registration authorization</label>
+            <LayerBadge layer="synthetic" />
           </div>
           <Button
             onClick={() => void updateMandate()}
@@ -883,7 +895,10 @@ function OrdersPanel({ onStartShopping }: { onStartShopping: () => void }) {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Orders & Settled GMV</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Orders & Settled GMV</h1>
+          <LayerBadge layer="live" />
+        </div>
         <p className="text-xs text-zinc-400 mt-1">
           Live financial reconciliation, captured GMV velocity, and verified Razorpay payment receipts.
         </p>
@@ -923,6 +938,13 @@ function OrdersPanel({ onStartShopping }: { onStartShopping: () => void }) {
         </div>
       ) : (
         <div className="space-y-4">
+          <div className="flex items-center justify-between text-xs text-zinc-400 font-mono px-1">
+            <span>RECONCILED ORDERS ({merchantOrders.length})</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-zinc-500 text-[11px]">Catalog Inventory:</span>
+              <LayerBadge layer="synthetic" />
+            </div>
+          </div>
           {merchantOrders.map((mo) => {
             const attempt = attempts.find((a) => a.id === mo.attemptId);
             const isPaid = mo.status === "paid";
@@ -1004,7 +1026,10 @@ function AuditPanel() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Audit Ledger</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Audit Ledger</h1>
+            <LayerBadge layer="live" />
+          </div>
           <p className="text-xs text-zinc-400 mt-1">Cryptographic SHA-256 hash-chained log of every state transition.</p>
         </div>
         <Button
@@ -1103,7 +1128,10 @@ function LabPanel() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Failure Lab & Security</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Failure Lab & Security</h1>
+          <LayerBadge layer="live" />
+        </div>
         <p className="text-xs text-zinc-400 mt-1">Simulate adversarial attacks, stock races, and policy violations.</p>
       </div>
 
@@ -1124,7 +1152,7 @@ function LabPanel() {
                     isSelected ? "bg-amber-500/20 text-amber-300" : "bg-white/5 text-zinc-400"
                   }`}
                 >
-                  {isSelected ? "Active" : "Ready"}
+                  {isSelected ? "Lab Inject Active" : "Lab Inject Ready"}
                 </span>
               </div>
               <p className="text-xs text-zinc-400 leading-relaxed">{att.desc}</p>
@@ -1169,7 +1197,10 @@ function AP2PrimitivesPanel() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">AP2 Protocol Primitives</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">AP2 Protocol Primitives</h1>
+          <LayerBadge layer="live" />
+        </div>
         <p className="text-xs text-zinc-400 mt-1">
           Agent Payment Protocol (AP2) cryptographically verifiable multi-phase mandates.
         </p>
@@ -1341,9 +1372,12 @@ function AgentRegistryPanel() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Agent Registry & Delegation</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Agent Registry & Delegation</h1>
+          <Badge tone="neutral">Reference Pattern</Badge>
+        </div>
         <p className="text-xs text-zinc-400 mt-1">
-          Cryptographic Ed25519 identity, capability scopes, and trust reputation governance.
+          Cryptographic Ed25519 identity, capability scopes, and trust reputation governance (Reference pattern, not TAP/UAP directory).
         </p>
       </div>
 
@@ -1491,7 +1525,10 @@ function ProductsPanel() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Products Catalog</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Products Catalog</h1>
+          <LayerBadge layer="synthetic" />
+        </div>
         <p className="text-xs text-zinc-400 mt-1">Browse SafeBuy verified hardware & grocery catalog items.</p>
       </div>
 
@@ -1655,7 +1692,10 @@ function ComparePanel({
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Compare Specs</h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Compare Specs</h1>
+          <LayerBadge layer="synthetic" />
+        </div>
         <p className="text-xs text-zinc-400 mt-1">Side-by-side product comparison & live specifications.</p>
       </div>
 
@@ -1957,15 +1997,21 @@ function GateOverlay() {
               <Clock className="size-4 animate-spin" />
             </div>
             <div>
-              <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold">
-                RBI §4.2 REGULATORY DWELL GATE
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold">
+                  RBI §4.2 REGULATORY DWELL GATE
+                </span>
+                <LayerBadge layer="live" />
+              </div>
               <h2 className="text-base font-bold text-white">Pre-Debit Notice Window</h2>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 font-mono text-emerald-300 font-bold text-xs">
-            <span>{sec}s dwell</span>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 font-mono text-emerald-300 font-bold text-xs">
+              <span>{sec}s dwell</span>
+            </div>
+            <LayerBadge layer="synthetic" />
           </div>
         </div>
 
@@ -2019,9 +2065,10 @@ function GateOverlay() {
           <div className="flex items-center gap-2">
             <Button
               onClick={() => void useSafeBuy.getState().proceedNow()}
-              className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs h-10 shadow-lg shadow-emerald-500/20"
+              className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs h-10 shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
             >
-              Approve & Authorize Now
+              <span>Proceed → Razorpay Checkout</span>
+              <LayerBadge layer="live" />
             </Button>
             <Button
               variant="outline"
