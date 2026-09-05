@@ -1,16 +1,17 @@
 {
   "status": "success",
-  "count": 9,
-  "merchantId": "nila-kirana",
+  "count": 10,
+  "merchantId": "safebuy-store",
   "items": [
+    { "sku": "ANKER-USBC-100W-1M", "name": "Anker 100W USB-C to USB-C Cable (1m)", "brand": "Anker", "category": "cables", "pricePaise": 149000, "stock": 35 },
     { "sku": "RICE-BAS-1KG", "name": "Aged Basmati Rice 1 kg", "brand": "India Gate", "category": "grains", "pricePaise": 14200, "stock": 18 },
     { "sku": "RICE-BAS-5KG", "name": "Aged Basmati Rice 5 kg (Economy Pack)", "brand": "India Gate", "category": "grains", "pricePaise": 62500, "stock": 10 },
-    { "sku": "RICE-SON-5KG", "name": "Sona Masoori 5 kg", "brand": "Lal Qilla", "category": "grains", "pricePaise": 38900, "stock": 9 },
-    { "sku": "ATA-WHL-5KG", "name": "Whole Wheat Atta 5 kg", "brand": "Aashirvaad", "category": "grains", "pricePaise": 27500, "stock": 14 },
-    { "sku": "DAL-TOO-1KG", "name": "Toor Dal 1 kg", "brand": "Tata Sampann", "category": "pulses", "pricePaise": 16800, "stock": 22 },
-    { "sku": "DAL-MOO-500", "name": "Moong Dal 500 g", "brand": "Organic Tattva", "category": "pulses", "pricePaise": 9200, "stock": 16 },
-    { "sku": "SPC-TUR-200", "name": "Turmeric Powder 200 g", "brand": "Everest", "category": "spices", "pricePaise": 4800, "stock": 30 },
+    { "sku": "ANKER-POWERCORE-20K", "name": "Anker PowerCore 20000mAh Power Bank", "brand": "Anker", "category": "power", "pricePaise": 399900, "stock": 15 },
+    { "sku": "KEYCHRON-K3-MAX", "name": "Keychron K3 Max Wireless Keyboard", "brand": "Keychron", "category": "peripherals", "pricePaise": 1649000, "stock": 12 },
+    { "sku": "SONY-WH1000XM5", "name": "Sony WH-1000XM5 Wireless Headphones", "brand": "Sony", "category": "audio", "pricePaise": 2999000, "stock": 8 },
     { "sku": "OIL-MUS-1L", "name": "Cold Pressed Mustard Oil 1 L", "brand": "Fortune", "category": "oil", "pricePaise": 17500, "stock": 12 },
+    { "sku": "DAL-TOO-1KG", "name": "Toor Dal 1 kg", "brand": "Tata Sampann", "category": "pulses", "pricePaise": 16800, "stock": 22 },
+    { "sku": "ATA-WHL-5KG", "name": "Whole Wheat Atta 5 kg", "brand": "Aashirvaad", "category": "grains", "pricePaise": 27500, "stock": 14 },
     { "sku": "DRY-MILK-1L", "name": "Full Cream Milk 1 L", "brand": "Amul Taaza", "category": "dairy", "pricePaise": 6600, "stock": 25 }
   ]
 }

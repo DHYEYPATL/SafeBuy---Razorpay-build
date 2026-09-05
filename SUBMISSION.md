@@ -1,21 +1,21 @@
-# ElectroCore (SafeBuy) — Official Track 01 Submission Packet
+# SafeBuy — Official Track 01 Submission Packet
 
 > **Track:** 01 — Agentic Commerce  
-> **Project Name:** ElectroCore (SafeBuy) — Bounded AI Buyer with Deterministic Guardrails & Razorpay Test-Mode Orders  
+> **Project Name:** SafeBuy — Bounded AI Buyer with Deterministic Guardrails & Razorpay Test-Mode Orders  
 > **Repository:** https://github.com/DHYEYPATL/SafeBuy---Razorpay-build  
 > **Option:** Option B (Making Merchants Transactable by an AI Buyer)
 
 ---
 
 ## 1. What problem does your project solve?
-Autonomous AI agents are emerging to handle consumer hardware and retail purchasing, but no payment rail in India allows silent, unbounded autonomous debit without e-mandate registration and 24-hour pre-debit notifications. Allowing an LLM to call payment APIs directly introduces severe financial risks (hallucinations, prompt injections, and budget overruns). ElectroCore provides the deterministic safety and governance layer that wraps the agent: schema-enforced spending policies, token-level guardrails, durable pre-debit notice records with dwell windows, merchant inventory reservation, and real Razorpay test-mode Order execution with reconciliation.
+Autonomous AI agents are emerging to handle consumer hardware and retail purchasing, but no payment rail in India allows silent, unbounded autonomous debit without e-mandate registration and 24-hour pre-debit notifications. Allowing an LLM to call payment APIs directly introduces severe financial risks (hallucinations, prompt injections, and budget overruns). SafeBuy provides the deterministic safety and governance layer that wraps the agent: schema-enforced spending policies, token-level guardrails, durable pre-debit notice records with dwell windows, merchant inventory reservation, and real Razorpay test-mode Order execution with reconciliation.
 
 ---
 
 ## 2. How did you make the merchant transactable end-to-end?
 We built a dual-layer commerce and payment spine:
-1. **Merchant Order Lifecycle:** When the guardrail approves a cart, ElectroCore creates a durable `MerchantOrder` with status `reserved`, decrementing available stock before the notice window.
-2. **Pre-Debit Notice Record:** ElectroCore issues a `PreDebitNotice` with an `executeAfter` timestamp.
+1. **Merchant Order Lifecycle:** When the guardrail approves a cart, SafeBuy creates a durable `MerchantOrder` with status `reserved`, decrementing available stock before the notice window.
+2. **Pre-Debit Notice Record:** SafeBuy issues a `PreDebitNotice` with an `executeAfter` timestamp.
 3. **Razorpay Orders API:** Our server creates an Order via `POST /v1/orders` passing receipt and attempt correlation IDs in notes.
 4. **Hosted Checkout:** Checkout opens strictly with the server-generated `order_id`.
 5. **Reconciliation & Settlement:** Client handler enters a `pending` state; backend status polling (`GET /v1/payments/:id`) and Webhooks verify `captured` status before `applyConfirm` debits the policy cap and marks the `MerchantOrder` as `paid`.
@@ -41,7 +41,7 @@ We built a dual-layer commerce and payment spine:
   - Cryptographic SHA-256 hash-chained audit trail with verification tool.
   - `MerchantOrder` reservation lifecycle (`reserved` → `paid` / `released`).
 - **SYNTHETIC (Labelled Sandbox Props):**
-  - *ElectroCore* tech hardware catalog (stand-in SKUs for agent discovery).
+  - *SafeBuy* merchant catalog (stand-in SKUs for agent discovery across tech and staples).
   - Bank pre-debit SMS (simulated in-app notice).
   - Policy registration authentication (simulated consent standing in for bank e-mandate registration).
   - 8-second dwell countdown (compressed demo representation of 24h RBI window).
@@ -50,14 +50,14 @@ We built a dual-layer commerce and payment spine:
 
 ## 4. How did you handle Indian regulatory requirements (RBI / NPCI)?
 Indian regulations forbid silent debits for un-registered recurring mandates and require AFA authentication during setup plus 24-hour pre-debit notifications before charge. We address this directly:
-1. Setup creates a spending policy pre-authorized by human consent.
+1. Setup creates a spending policy pre-authorized by human consent (Demo default: ₹1,500 budget cap).
 2. Every purchase creates a durable `PreDebitNotice` record with an 8s dwell window, allowing the cardholder to inspect items, hold/extend time, or abort before funds move.
 3. Transactions exceeding ₹15,000 trigger mandatory AFA re-confirmation.
 
 ---
 
 ## 5. How is your project modelled after emerging standards like AP2 / UAP?
-ElectroCore models transaction state into three distinct JSON documents modelled after Google/Visa AP2 primitives:
+SafeBuy models transaction state into three distinct JSON documents modelled after Google/Visa AP2 primitives:
 1. **AP2 Intent Mandate:** The human spending policy defining budget, categories, brand boundaries, and expiration.
 2. **AP2 Cart Mandate:** The locked SKU proposal, merchant order reservation, and guardrail proof.
 3. **AP2 Payment Mandate:** The settlement contract linking Razorpay `order_id`, `payment_id`, notice ID, and capture status.

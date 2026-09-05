@@ -41,6 +41,8 @@ import {
   ChevronRight,
   ShieldCheck,
   X,
+  DollarSign,
+  BarChart3,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,7 +57,7 @@ import {
   type CatalogItem,
   type CartLine,
 } from "@/lib/safebuy/types";
-import { CATALOG, TECH_CATALOG, getItem, merchantMeta } from "@/lib/safebuy/catalog";
+import { CATALOG, TECH_CATALOG, GROCERY_CATALOG, getItem, merchantMeta } from "@/lib/safebuy/catalog";
 import { useSafeBuy, type JourneyStage } from "@/lib/safebuy/store";
 import { paiseToInr, shortHash, newId } from "@/lib/utils";
 import { createRazorpayOrder, getRazorpayPublicKey } from "@/lib/safebuy/razorpay-api";
@@ -66,20 +68,20 @@ import { listRegisteredAgents } from "@/lib/safebuy/identity";
 
 export type MainTab =
   | "shopping"
-  | "products"
-  | "compare"
   | "mandate"
   | "orders"
   | "audit"
-  | "ap2"
   | "lab"
-  | "agents";
+  | "ap2"
+  | "agents"
+  | "products"
+  | "compare";
 
 export function SafeBuyApp() {
   const [tab, setTab] = useState<MainTab>("shopping");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [compareSkuA, setCompareSkuA] = useState("LOGI-MX-MASTER-3S");
-  const [compareSkuB, setCompareSkuB] = useState("KEYCHRON-K3-MAX");
+  const [compareSkuA, setCompareSkuA] = useState("KEYCHRON-K3-MAX");
+  const [compareSkuB, setCompareSkuB] = useState("SONY-WH1000XM5");
 
   const phase = useSafeBuy((s) => s.phase);
   const isConfigured = useSafeBuy((s) => s.isConfigured);
@@ -147,6 +149,12 @@ export function SafeBuyApp() {
               onViewOrders={() => setTab("orders")}
             />
           )}
+          {tab === "mandate" && <MandatePanel />}
+          {tab === "orders" && <OrdersPanel onStartShopping={() => setTab("shopping")} />}
+          {tab === "audit" && <AuditPanel />}
+          {tab === "lab" && <LabPanel />}
+          {tab === "ap2" && <AP2PrimitivesPanel />}
+          {tab === "agents" && <AgentRegistryPanel />}
           {tab === "products" && <ProductsPanel />}
           {tab === "compare" && (
             <ComparePanel
@@ -156,12 +164,6 @@ export function SafeBuyApp() {
               onChangeSkuB={setCompareSkuB}
             />
           )}
-          {tab === "mandate" && <MandatePanel />}
-          {tab === "orders" && <OrdersPanel onStartShopping={() => setTab("shopping")} />}
-          {tab === "audit" && <AuditPanel />}
-          {tab === "ap2" && <AP2PrimitivesPanel />}
-          {tab === "lab" && <LabPanel />}
-          {tab === "agents" && <AgentRegistryPanel />}
         </main>
 
         {/* Right Sidebar: AI Control & Telemetry Panel */}
@@ -207,9 +209,9 @@ function Header({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-display font-bold text-base tracking-tight text-white">ElectroCore</span>
+              <span className="font-display font-bold text-base tracking-tight text-white">{MERCHANT_NAME}</span>
               <span className="text-[10px] uppercase font-mono tracking-widest px-1.5 py-0.5 rounded bg-white/5 text-zinc-400 border border-white/5">
-                AI COMMERCE
+                BOUNDED AI COMMERCE
               </span>
             </div>
           </div>
@@ -249,7 +251,7 @@ function Header({
 }
 
 /* =========================================================================
-   LEFT SIDEBAR NAVIGATION (STREAMLINED 3-GROUP HIERARCHY)
+   LEFT SIDEBAR NAVIGATION (ALIGNED TO GOLDEN EVALUATION PATH)
    ========================================================================= */
 
 function LeftSidebar({
@@ -265,27 +267,27 @@ function LeftSidebar({
 
   const navGroups = [
     {
-      group: "SHOP",
+      group: "COMMERCE & PAY",
       items: [
-        { id: "shopping" as MainTab, label: "Assistant", icon: Sparkles, badge: "✦" },
-        { id: "products" as MainTab, label: "Products", icon: Box },
-        { id: "compare" as MainTab, label: "Compare", icon: ArrowLeftRight },
+        { id: "shopping" as MainTab, label: "Assistant", icon: Sparkles, badge: "AI" },
+        { id: "mandate" as MainTab, label: "Mandate Policy", icon: KeyRound },
+        { id: "orders" as MainTab, label: "Orders & GMV", icon: Store },
       ],
     },
     {
-      group: "PROTECT & PAY",
-      items: [
-        { id: "mandate" as MainTab, label: "Mandate", icon: KeyRound },
-        { id: "orders" as MainTab, label: "Orders", icon: Store },
-      ],
-    },
-    {
-      group: "PROTOCOL",
+      group: "GOVERNANCE & PROTOCOL",
       items: [
         { id: "audit" as MainTab, label: "Audit Ledger", icon: ScrollText },
-        { id: "ap2" as MainTab, label: "AP2 Primitives", icon: FileCode2 },
         { id: "lab" as MainTab, label: "Failure Lab", icon: FlaskConical },
+        { id: "ap2" as MainTab, label: "AP2 Primitives", icon: FileCode2 },
         { id: "agents" as MainTab, label: "Agent Registry", icon: Users },
+      ],
+    },
+    {
+      group: "EXPLORE",
+      items: [
+        { id: "products" as MainTab, label: "Catalog", icon: Box },
+        { id: "compare" as MainTab, label: "Compare Specs", icon: ArrowLeftRight },
       ],
     },
   ];
@@ -366,14 +368,14 @@ function LeftSidebar({
       {/* Footer Info Tag */}
       <div className="pt-4 border-t border-white/5 px-2 flex items-center justify-between text-[11px] text-zinc-500 font-mono">
         <span>Track 01 - Pay</span>
-        <span className="px-1.5 py-0.5 rounded bg-white/5 text-zinc-400 border border-white/5">v0.2.1</span>
+        <span className="px-1.5 py-0.5 rounded bg-white/5 text-zinc-400 border border-white/5">v0.2.2</span>
       </div>
     </div>
   );
 }
 
 /* =========================================================================
-   CENTER VIEW 1: AI SHOPPING ASSISTANT PANEL (CLEAN EXPERIENTIAL FLOW)
+   CENTER VIEW 1: AI SHOPPING ASSISTANT PANEL
    ========================================================================= */
 
 function AIShoppingPanel({
@@ -400,24 +402,24 @@ function AIShoppingPanel({
 
   const QUICK_PROMPTS = [
     {
-      title: "FIND A PRODUCT",
-      prompt: "I need wireless headphones under ₹30,000",
+      title: "BUY TECH HARDWARE",
+      prompt: "Buy 100W USB-C cable under ₹1,500",
       icon: ArrowRight,
     },
     {
-      title: "COMPARE PRODUCTS",
-      prompt: "Compare Sony WH-1000XM5 and JBL Flip 6",
+      title: "BUY GROCERY STAPLE",
+      prompt: "Buy 1 kg basmati under ₹150",
+      icon: Plus,
+    },
+    {
+      title: "COMPARE HARDWARE",
+      prompt: "Compare Keychron K3 Max & Sony WH-1000XM5",
       icon: ArrowLeftRight,
     },
     {
-      title: "CHECK AVAILABILITY",
-      prompt: "Is the Logitech MX Master 3S in stock?",
-      icon: Radio,
-    },
-    {
-      title: "FIND A COMPLEMENT",
-      prompt: "What goes well with the Sony WH-1000XM5?",
-      icon: Plus,
+      title: "TEST AFA REGULATORY GATE",
+      prompt: "Buy Sony WH-1000XM5 headphones",
+      icon: Shield,
     },
   ];
 
@@ -443,13 +445,13 @@ function AIShoppingPanel({
           <Sparkles className="size-7 animate-pulse text-emerald-400" />
         </div>
         <h1 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
-          ElectroCore
+          {MERCHANT_NAME}
         </h1>
         <p className="text-xs font-mono tracking-widest text-emerald-400 uppercase font-semibold">
-          AI COMMERCE ASSISTANT
+          BOUNDED AI COMMERCE ASSISTANT
         </p>
         <p className="text-sm text-zinc-400 max-w-lg mx-auto">
-          Discover products. Compare options. Make smarter purchases with bounded guardrails.
+          Discover products. Compare options. Make autonomous purchases with deterministic policy guardrails.
         </p>
       </div>
 
@@ -533,7 +535,7 @@ function AIShoppingPanel({
               <Sparkles className="size-3" />
               <span>AI DISCOVERY CONTEXT</span>
             </div>
-            <p className="text-zinc-300 font-medium">{lastConfirmedOrder.discoveryPrompt || `Find complement for ${lastConfirmedOrder.name}`}</p>
+            <p className="text-zinc-300 font-medium">{lastConfirmedOrder.discoveryPrompt || `Purchased ${lastConfirmedOrder.name}`}</p>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
@@ -548,7 +550,7 @@ function AIShoppingPanel({
               onClick={onViewOrders}
               className="border-white/10 text-zinc-300 hover:bg-white/10 text-xs px-4 py-2"
             >
-              View in Orders Tab
+              View in Orders & GMV
             </Button>
             <Button
               variant="ghost"
@@ -581,7 +583,7 @@ function AIShoppingPanel({
                 {msg.role === "agent" && (
                   <div className="flex items-center gap-1.5 text-emerald-400 font-mono text-[10px] uppercase font-bold tracking-wider mb-1.5">
                     <Sparkles className="size-3" />
-                    <span>ElectroCore Assistant</span>
+                    <span>SafeBuy Assistant</span>
                   </div>
                 )}
                 <div className="whitespace-pre-wrap">{msg.text}</div>
@@ -599,7 +601,7 @@ function AIShoppingPanel({
               <Sparkles className="size-3.5" />
               <span>AI SHORTLIST</span>
             </div>
-            <span className="text-[11px] text-zinc-500 font-mono">3 matches analyzed</span>
+            <span className="text-[11px] text-zinc-500 font-mono">{aiShortlist.length} matches analyzed</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -712,7 +714,7 @@ function AIShoppingPanel({
                   void handleSendPrompt();
                 }
               }}
-              placeholder="+ Ask ElectroCore anything... (e.g. 'I need wireless headphones under ₹30,000')"
+              placeholder="+ Ask SafeBuy anything... (e.g. 'Buy 1 kg basmati under ₹150' or 'Buy 100W cable under ₹1,500')"
               className="w-full h-11 pl-4 pr-20 rounded-xl bg-[#121520] border border-white/10 focus:border-emerald-500/50 text-xs text-white placeholder:text-zinc-500 outline-none shadow-inner transition-all"
             />
 
@@ -732,33 +734,33 @@ function AIShoppingPanel({
           <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-400 pt-0.5">
             <div className="flex flex-wrap items-center gap-1.5">
               <button
-                onClick={() => void handleSendPrompt("I need wireless headphones under ₹30,000")}
+                onClick={() => void handleSendPrompt("Buy 100W USB-C cable under ₹1,500")}
                 className="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white border border-white/5 transition-colors"
               >
-                Find headphones
+                Buy 100W Cable (&lt;₹1.5k)
               </button>
               <button
-                onClick={() => void handleSendPrompt("Compare Sony WH-1000XM5 and JBL Flip 6")}
+                onClick={() => void handleSendPrompt("Buy 1 kg basmati under ₹150")}
                 className="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white border border-white/5 transition-colors"
               >
-                Compare products
+                Buy 1kg Basmati (&lt;₹150)
               </button>
               <button
-                onClick={() => void handleSendPrompt("Is the Logitech MX Master 3S in stock?")}
+                onClick={() => void handleSendPrompt("Compare Keychron K3 Max & Sony WH-1000XM5")}
                 className="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white border border-white/5 transition-colors"
               >
-                Check availability
+                Compare Tech Specs
               </button>
               <button
-                onClick={() => void handleSendPrompt("What goes well with the Sony WH-1000XM5?")}
+                onClick={() => void handleSendPrompt("Buy Sony WH-1000XM5 headphones")}
                 className="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white border border-white/5 transition-colors"
               >
-                Find a complement
+                Test AFA Gate (&gt;₹15k)
               </button>
             </div>
 
             <span className="hidden sm:inline font-mono text-[10px] text-zinc-500">
-              Catalog grounded · Dual-rail compliance · No invented prices
+              Grounded catalog · Dual-rail compliance · Real Razorpay Orders API
             </span>
           </div>
         </div>
@@ -768,7 +770,688 @@ function AIShoppingPanel({
 }
 
 /* =========================================================================
-   CENTER VIEW 2: PRODUCTS CATALOG GRID
+   CENTER VIEW 2: SPENDING POLICY MANDATE PANEL
+   ========================================================================= */
+
+function MandatePanel() {
+  const mandate = useSafeBuy((s) => s.mandate);
+  const [maxRupees, setMaxRupees] = useState(mandate ? Math.round(mandate.maxAmountPaise / 100) : 1500);
+  const [ceilingRupees, setCeilingRupees] = useState(
+    mandate ? Math.round(mandate.priceCeilingPerItemPaise / 100) : 1500,
+  );
+  const [deny, setDeny] = useState(mandate?.brandsDeny?.join(", ") || "");
+  const [authorized, setAuthorized] = useState(true);
+
+  async function updateMandate() {
+    await useSafeBuy.getState().createMandate({
+      maxAmountPaise: maxRupees * 100,
+      categories: [...CATEGORIES],
+      brandsAllow: [],
+      brandsDeny: deny.split(",").map((s) => s.trim()).filter(Boolean),
+      maxQuantityPerItem: 5,
+      priceCeilingPerItemPaise: ceilingRupees * 100,
+      validityDays: 30,
+    });
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Mandate Policy</h1>
+        <p className="text-xs text-zinc-400 mt-1">
+          Configure financial limits and brand constraints for autonomous agent transactions (Demo default: ₹1,500 budget).
+        </p>
+      </div>
+
+      <div className="p-6 rounded-2xl bg-[#0f1118] border border-white/10 space-y-5 shadow-lg">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-xs text-zinc-400">Total Spend Budget (₹)</label>
+            <input
+              type="number"
+              value={maxRupees}
+              onChange={(e) => setMaxRupees(Number(e.target.value))}
+              className="w-full h-10 px-3 rounded-xl bg-[#12141e] border border-white/10 text-xs text-white outline-none focus:border-emerald-500/50 font-mono"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs text-zinc-400">Per-Item Ceiling (₹)</label>
+            <input
+              type="number"
+              value={ceilingRupees}
+              onChange={(e) => setCeilingRupees(Number(e.target.value))}
+              className="w-full h-10 px-3 rounded-xl bg-[#12141e] border border-white/10 text-xs text-white outline-none focus:border-emerald-500/50 font-mono"
+            />
+          </div>
+          <div className="sm:col-span-2 space-y-1.5">
+            <label className="text-xs text-zinc-400">Denied Brands (Comma-separated)</label>
+            <input
+              type="text"
+              value={deny}
+              onChange={(e) => setDeny(e.target.value)}
+              placeholder="e.g. DeniedBrandName"
+              className="w-full h-10 px-3 rounded-xl bg-[#12141e] border border-white/10 text-xs text-white outline-none focus:border-emerald-500/50 font-mono"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/5">
+          <div className="flex items-center gap-2 text-xs text-zinc-300">
+            <input
+              type="checkbox"
+              checked={authorized}
+              onChange={(e) => setAuthorized(e.target.checked)}
+              id="auth-mandate"
+              className="accent-emerald-500 size-4"
+            />
+            <label htmlFor="auth-mandate">Acknowledge simulated registration authorization</label>
+          </div>
+          <Button
+            onClick={() => void updateMandate()}
+            className="bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-xs px-5 h-9"
+          >
+            Save Mandate Policy
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   CENTER VIEW 3: ORDERS & SETTLED GMV GROWTH PANEL
+   ========================================================================= */
+
+function OrdersPanel({ onStartShopping }: { onStartShopping: () => void }) {
+  const merchantOrders = useSafeBuy((s) => s.merchantOrders);
+  const attempts = useSafeBuy((s) => s.attempts);
+
+  const paidOrders = useMemo(() => merchantOrders.filter((mo) => mo.status === "paid"), [merchantOrders]);
+  const totalGmvPaise = useMemo(
+    () => paidOrders.reduce((sum, mo) => sum + mo.totalPaise, 0),
+    [paidOrders],
+  );
+  const aovPaise = useMemo(
+    () => (paidOrders.length > 0 ? Math.round(totalGmvPaise / paidOrders.length) : 0),
+    [paidOrders, totalGmvPaise],
+  );
+  const verifiedCaptures = useMemo(
+    () => attempts.filter((a) => a.razorpayStatus === "captured" || a.phase === "confirmed").length,
+    [attempts],
+  );
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Orders & Settled GMV</h1>
+        <p className="text-xs text-zinc-400 mt-1">
+          Live financial reconciliation, captured GMV velocity, and verified Razorpay payment receipts.
+        </p>
+      </div>
+
+      {/* Settled GMV & Growth Header Metric Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="p-4 rounded-xl bg-[#0f1118] border border-white/10 space-y-1">
+          <p className="text-[10px] font-mono uppercase text-zinc-500 font-semibold">SETTLED GMV</p>
+          <p className="font-mono text-xl font-bold text-emerald-400">{paiseToInr(totalGmvPaise)}</p>
+          <span className="text-[10px] text-zinc-500">Verified captured volume</span>
+        </div>
+        <div className="p-4 rounded-xl bg-[#0f1118] border border-white/10 space-y-1">
+          <p className="text-[10px] font-mono uppercase text-zinc-500 font-semibold">ORDERS SETTLED</p>
+          <p className="font-mono text-xl font-bold text-white">{paidOrders.length}</p>
+          <span className="text-[10px] text-zinc-500">100% fail-closed safety</span>
+        </div>
+        <div className="p-4 rounded-xl bg-[#0f1118] border border-white/10 space-y-1">
+          <p className="text-[10px] font-mono uppercase text-zinc-500 font-semibold">AVERAGE ORDER (AOV)</p>
+          <p className="font-mono text-xl font-bold text-emerald-300">{paiseToInr(aovPaise)}</p>
+          <span className="text-[10px] text-zinc-500">Bounded by policy cap</span>
+        </div>
+        <div className="p-4 rounded-xl bg-[#0f1118] border border-white/10 space-y-1">
+          <p className="text-[10px] font-mono uppercase text-zinc-500 font-semibold">RAZORPAY CAPTURES</p>
+          <p className="font-mono text-xl font-bold text-emerald-400">{verifiedCaptures}</p>
+          <span className="text-[10px] text-zinc-500">Orders API v1</span>
+        </div>
+      </div>
+
+      {merchantOrders.length === 0 ? (
+        <div className="p-12 rounded-2xl bg-[#0e1017] border border-white/5 text-center space-y-4">
+          <Store className="size-10 text-zinc-600 mx-auto" />
+          <p className="text-sm text-zinc-400">No orders placed yet. Start an assistant purchase to test real checkout.</p>
+          <Button onClick={onStartShopping} className="bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-semibold">
+            Start Assistant Flow
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {merchantOrders.map((mo) => {
+            const attempt = attempts.find((a) => a.id === mo.attemptId);
+            const isPaid = mo.status === "paid";
+
+            return (
+              <div
+                key={mo.id}
+                className="p-5 rounded-2xl bg-[#0f1118] border border-white/10 space-y-4 shadow-lg"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-3">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-mono uppercase text-zinc-400">ORDER ID</span>
+                    <p className="font-mono text-xs font-bold text-white">{mo.id}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase ${
+                        isPaid
+                          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                          : "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                      }`}
+                    >
+                      {mo.status}
+                    </span>
+                    <span className="font-mono font-bold text-sm text-emerald-400">{paiseToInr(mo.totalPaise)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {mo.lines.map((l, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs text-zinc-300">
+                      <span>
+                        {l.name} × {l.quantity}
+                      </span>
+                      <span className="font-mono text-zinc-400">{paiseToInr(l.linePaise)}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-white/5 text-[11px] font-mono text-zinc-400">
+                  <div>
+                    <span>Razorpay Order / Payment: </span>
+                    <span className="text-zinc-200">{attempt?.razorpayOrderId || mo.razorpayOrderId || "Pending"}</span>
+                  </div>
+                  <div>
+                    <span>Settled At: </span>
+                    <span className="text-zinc-200">{mo.paidAt ? new Date(mo.paidAt).toLocaleTimeString() : "Pending"}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   CENTER VIEW 4: AUDIT TRAIL PANEL
+   ========================================================================= */
+
+function AuditPanel() {
+  const audit = useSafeBuy((s) => s.audit);
+  const [verifying, setVerifying] = useState(false);
+  const [result, setResult] = useState<ChainVerificationResult | null>(null);
+
+  async function verifyChain() {
+    setVerifying(true);
+    try {
+      const res = await verifyAuditChain(audit);
+      setResult(res);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Audit Ledger</h1>
+          <p className="text-xs text-zinc-400 mt-1">Cryptographic SHA-256 hash-chained log of every state transition.</p>
+        </div>
+        <Button
+          onClick={() => void verifyChain()}
+          disabled={verifying}
+          className="bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-xs h-9 px-4"
+        >
+          {verifying ? "Verifying..." : "Verify Hash Chain"}
+        </Button>
+      </div>
+
+      {result && (
+        <div
+          className={`p-4 rounded-xl border text-xs font-mono ${
+            result.valid
+              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+              : "bg-red-500/10 border-red-500/30 text-red-300"
+          }`}
+        >
+          {result.valid
+            ? `✓ Hash chain unbroken across all ${result.totalRecords} recorded blocks.`
+            : `✗ Integrity failure: ${result.error}`}
+        </div>
+      )}
+
+      <div className="space-y-2 max-h-[600px] overflow-y-auto">
+        {audit.length === 0 ? (
+          <p className="text-xs text-zinc-400 italic">No audit records recorded yet.</p>
+        ) : (
+          audit
+            .slice()
+            .reverse()
+            .map((rec) => (
+              <div key={rec.id} className="p-3.5 rounded-xl bg-[#0f1118] border border-white/5 space-y-1.5 text-xs font-mono">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-emerald-400 font-bold">
+                    #{rec.seq} {rec.event}
+                  </span>
+                  <span className="text-zinc-500">{new Date(rec.ts).toLocaleTimeString()}</span>
+                </div>
+                <p className="text-zinc-300 font-sans text-xs">{rec.explain}</p>
+                <div className="flex items-center gap-2 text-[10px] text-zinc-500 truncate">
+                  <span>Hash: {rec.hash.slice(0, 16)}...</span>
+                  <span>Prev: {rec.prevHash.slice(0, 16)}...</span>
+                </div>
+              </div>
+            ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   CENTER VIEW 5: FAILURE LAB & SECURITY INJECTION PANEL
+   ========================================================================= */
+
+function LabPanel() {
+  const labInject = useSafeBuy((s) => s.labInject);
+  const setLabInject = useSafeBuy((s) => s.setLabInject);
+  const runInstruction = useSafeBuy((s) => s.runInstruction);
+
+  const attacks: { id: LabInject; title: string; desc: string; prompt: string }[] = [
+    {
+      id: "none",
+      title: "Normal Execution",
+      desc: "Standard compliant operations without malicious injection.",
+      prompt: "Buy 100W USB-C cable under ₹1,500",
+    },
+    {
+      id: "semantic_mismatch",
+      title: "Semantic Prompt Injection",
+      desc: "Agent attempts to substitute unauthorized item (e.g. Atta for Basmati).",
+      prompt: "Get 5 kg atta with Cadbury chocolate",
+    },
+    {
+      id: "stock_race",
+      title: "Stock Race Simulation",
+      desc: "Requested SKU drops to 0 inventory immediately prior to reservation.",
+      prompt: "Is the Logitech MX Master 3S in stock?",
+    },
+    {
+      id: "replay_attack",
+      title: "Replay Attack Simulation",
+      desc: "Injects forged HMAC signatures to test cryptographic rejection.",
+      prompt: "Buy Sony WH-1000XM5 headphones",
+    },
+    {
+      id: "untrusted_agent",
+      title: "Untrusted Agent Delegation",
+      desc: "Tests rejection when agent trust score falls below safe threshold (<30).",
+      prompt: "Buy Keychron K3 Max keyboard",
+    },
+  ];
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Failure Lab & Security</h1>
+        <p className="text-xs text-zinc-400 mt-1">Simulate adversarial attacks, stock races, and policy violations.</p>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {attacks.map((att) => {
+          const isSelected = labInject === att.id;
+          return (
+            <div
+              key={att.id}
+              className={`p-5 rounded-2xl bg-[#0f1118] border transition-all space-y-3 ${
+                isSelected ? "border-amber-500/50 bg-amber-500/5" : "border-white/10 hover:border-white/20"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-sm text-white">{att.title}</h3>
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded uppercase font-bold ${
+                    isSelected ? "bg-amber-500/20 text-amber-300" : "bg-white/5 text-zinc-400"
+                  }`}
+                >
+                  {isSelected ? "Active" : "Ready"}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 leading-relaxed">{att.desc}</p>
+              <div className="flex items-center gap-2 pt-1">
+                <Button
+                  onClick={() => setLabInject(att.id)}
+                  variant={isSelected ? "default" : "outline"}
+                  className="text-xs h-8 flex-1"
+                >
+                  {isSelected ? "Injection Armed" : "Select Test"}
+                </Button>
+                <Button
+                  onClick={() => {
+                    setLabInject(att.id);
+                    void runInstruction(att.prompt);
+                  }}
+                  className="text-xs h-8 bg-emerald-500 hover:bg-emerald-600 text-black font-semibold"
+                >
+                  Run Attack
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   CENTER VIEW 6: AP2 PRIMITIVES PROTOCOL FLOW
+   ========================================================================= */
+
+function AP2PrimitivesPanel() {
+  const getAP2Primitives = useSafeBuy((s) => s.getAP2Primitives);
+  const primitives = getAP2Primitives();
+
+  const [showJson1, setShowJson1] = useState(false);
+  const [showJson2, setShowJson2] = useState(false);
+  const [showJson3, setShowJson3] = useState(false);
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">AP2 Protocol Primitives</h1>
+        <p className="text-xs text-zinc-400 mt-1">
+          Agent Payment Protocol (AP2) cryptographically verifiable multi-phase mandates.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {/* Step 1: Intent Mandate */}
+        <div className="p-5 rounded-2xl bg-[#0f1118] border border-white/10 space-y-4 shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="size-6 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-mono text-xs font-bold">
+                1
+              </span>
+              <h3 className="font-bold text-sm text-white">Intent Mandate</h3>
+            </div>
+            <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
+              Intent Captured
+            </span>
+          </div>
+
+          <p className="text-xs text-zinc-300 leading-relaxed">
+            Converts natural language user instructions into a bounded, cryptographically signed authorization envelope.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-[11px]">
+            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
+              <span className="text-zinc-500 uppercase text-[10px]">MANDATE ID</span>
+              <p className="text-emerald-300 truncate">{primitives.intentMandate?.mandateId || "man_safebuy_default"}</p>
+            </div>
+            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
+              <span className="text-zinc-500 uppercase text-[10px]">CATEGORY SCOPE</span>
+              <p className="text-zinc-200 truncate">
+                {primitives.intentMandate?.allowedCategories?.join(", ") || "cables, power, grains, audio"}
+              </p>
+            </div>
+            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
+              <span className="text-zinc-500 uppercase text-[10px]">AUTHORIZED BY</span>
+              <p className="text-zinc-200 truncate">{primitives.intentMandate?.authorizedBy || "human_cardholder"}</p>
+            </div>
+          </div>
+
+          <div className="pt-1">
+            <button
+              onClick={() => setShowJson1(!showJson1)}
+              className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
+            >
+              <span>{showJson1 ? "▾ Hide" : "▸ Show"} Raw Protocol Envelope</span>
+            </button>
+            {showJson1 && (
+              <pre className="mt-2 p-3 rounded-xl bg-black/60 border border-white/10 text-[11px] font-mono text-zinc-300 overflow-x-auto">
+                {JSON.stringify(primitives.intentMandate, null, 2)}
+              </pre>
+            )}
+          </div>
+        </div>
+
+        {/* Step 2: Cart Mandate */}
+        <div className="p-5 rounded-2xl bg-[#0f1118] border border-white/10 space-y-4 shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="size-6 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-mono text-xs font-bold">
+                2
+              </span>
+              <h3 className="font-bold text-sm text-white">Cart Mandate</h3>
+            </div>
+            <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
+              SKU Grounded
+            </span>
+          </div>
+
+          <p className="text-xs text-zinc-300 leading-relaxed">
+            Binds the planned purchase to deterministic catalog SKUs, verified inventory reservations, and tamper-proof cart hashes.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-[11px]">
+            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
+              <span className="text-zinc-500 uppercase text-[10px]">ATTEMPT ID</span>
+              <p className="text-emerald-300 truncate">
+                {primitives.cartMandate?.attemptId || "att_sb_grounded"}
+              </p>
+            </div>
+            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
+              <span className="text-zinc-500 uppercase text-[10px]">MERCHANT ORDER</span>
+              <p className="text-zinc-200 truncate">{primitives.cartMandate?.merchantOrderId || "mo_sb_reserved"}</p>
+            </div>
+            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
+              <span className="text-zinc-500 uppercase text-[10px]">LOCKED SKUS</span>
+              <p className="text-zinc-200 truncate">
+                {primitives.cartMandate?.lockedSkus?.length || 1} Item(s) Reserved
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-1">
+            <button
+              onClick={() => setShowJson2(!showJson2)}
+              className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
+            >
+              <span>{showJson2 ? "▾ Hide" : "▸ Show"} Raw Protocol Envelope</span>
+            </button>
+            {showJson2 && (
+              <pre className="mt-2 p-3 rounded-xl bg-black/60 border border-white/10 text-[11px] font-mono text-zinc-300 overflow-x-auto">
+                {JSON.stringify(primitives.cartMandate, null, 2)}
+              </pre>
+            )}
+          </div>
+        </div>
+
+        {/* Step 3: Payment Mandate */}
+        <div className="p-5 rounded-2xl bg-[#0f1118] border border-white/10 space-y-4 shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="size-6 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-mono text-xs font-bold">
+                3
+              </span>
+              <h3 className="font-bold text-sm text-white">Payment Mandate</h3>
+            </div>
+            <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
+              Settlement Rail
+            </span>
+          </div>
+
+          <p className="text-xs text-zinc-300 leading-relaxed">
+            Coordinates the two-phase commit pre-debit dwell period and executes Razorpay settlement rails with cryptographic signature validation.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-[11px]">
+            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
+              <span className="text-zinc-500 uppercase text-[10px]">NOTICE ID</span>
+              <p className="text-emerald-300 truncate">{primitives.paymentMandate?.noticeId || "nt_sb_active"}</p>
+            </div>
+            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
+              <span className="text-zinc-500 uppercase text-[10px]">RECONCILIATION</span>
+              <p className="text-zinc-200">{primitives.paymentMandate?.reconciliationStatus || "pending"}</p>
+            </div>
+            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
+              <span className="text-zinc-500 uppercase text-[10px]">RAIL</span>
+              <p className="text-emerald-300">Razorpay v1</p>
+            </div>
+          </div>
+
+          <div className="pt-1">
+            <button
+              onClick={() => setShowJson3(!showJson3)}
+              className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
+            >
+              <span>{showJson3 ? "▾ Hide" : "▸ Show"} Raw Protocol Envelope</span>
+            </button>
+            {showJson3 && (
+              <pre className="mt-2 p-3 rounded-xl bg-black/60 border border-white/10 text-[11px] font-mono text-zinc-300 overflow-x-auto">
+                {JSON.stringify(primitives.paymentMandate, null, 2)}
+              </pre>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   CENTER VIEW 7: AGENT REGISTRY & DELEGATED IDENTITY PANEL
+   ========================================================================= */
+
+function AgentRegistryPanel() {
+  const agentIdentity = useSafeBuy((s) => s.agentIdentity);
+  const registeredAgents = listRegisteredAgents();
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Agent Registry & Delegation</h1>
+        <p className="text-xs text-zinc-400 mt-1">
+          Cryptographic Ed25519 identity, capability scopes, and trust reputation governance.
+        </p>
+      </div>
+
+      {/* Active Buyer Agent Identity Card */}
+      <div className="p-6 rounded-2xl bg-[#0f1118] border border-white/10 space-y-5 shadow-lg">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-sm">
+              <Users className="size-5" />
+            </div>
+            <div>
+              <h2 className="font-bold text-base text-white">{agentIdentity.operatorName}</h2>
+              <p className="font-mono text-xs text-zinc-400">{agentIdentity.agentId}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono text-xs font-bold">
+              Trust Score: {agentIdentity.trustScore}/100
+            </span>
+            <span className="px-2.5 py-1 rounded-full bg-white/5 text-zinc-300 border border-white/10 font-mono text-xs uppercase">
+              {agentIdentity.status}
+            </span>
+          </div>
+        </div>
+
+        {/* Visual Trust Score Progress Bar */}
+        <div className="space-y-1.5 font-mono text-[11px]">
+          <div className="flex justify-between text-zinc-400">
+            <span>REPUTATION TIER: HIGH TRUST</span>
+            <span className="text-emerald-400 font-bold">{agentIdentity.trustScore}% Verified</span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-white/5 overflow-hidden border border-white/10">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300 transition-all duration-500"
+              style={{ width: `${agentIdentity.trustScore}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Identity Details Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
+          <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+            <span className="text-[10px] text-zinc-500 uppercase font-bold">ED25519 PUBLIC KEY</span>
+            <p className="text-emerald-300 break-all text-[11px]">{agentIdentity.publicKey}</p>
+          </div>
+          <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+            <span className="text-[10px] text-zinc-500 uppercase font-bold">DELEGATION BOUNDS</span>
+            <p className="text-zinc-200">Max ₹15,000 AFA threshold · Dwell notice required</p>
+          </div>
+        </div>
+
+        {/* Capability Claims */}
+        <div className="space-y-2 pt-2 border-t border-white/5">
+          <p className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 font-semibold">
+            GRANTED CAPABILITY CLAIMS
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              "catalog:read",
+              "intent:parse_bounded",
+              "cart:propose",
+              "payment:dwell_authorize",
+              "audit:chain_commit",
+            ].map((claim) => (
+              <span
+                key={claim}
+                className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-zinc-300 font-mono text-[11px]"
+              >
+                ✓ {claim}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Governance & Trust Safeguards Breakdown */}
+      <div className="p-5 rounded-2xl bg-[#0f1118] border border-white/10 space-y-3 shadow-lg">
+        <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400">
+          Agent Governance & Anti-Gaming Rules
+        </h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-[11px] text-zinc-300">
+          <div className="p-3 rounded-xl bg-black/30 border border-white/5 space-y-1">
+            <span className="text-white font-bold">Volume Dampening</span>
+            <p className="text-zinc-400 text-[10px] leading-relaxed">
+              Rapid sub-second micro transactions damp reputation gains to prevent trust gaming.
+            </p>
+          </div>
+          <div className="p-3 rounded-xl bg-black/30 border border-white/5 space-y-1">
+            <span className="text-white font-bold">Replay Window</span>
+            <p className="text-zinc-400 text-[10px] leading-relaxed">
+              Strict 30-second timestamp freshness and nonce deduplication prevents transaction replay.
+            </p>
+          </div>
+          <div className="p-3 rounded-xl bg-black/30 border border-white/5 space-y-1">
+            <span className="text-white font-bold">Fail-Closed Default</span>
+            <p className="text-zinc-400 text-[10px] leading-relaxed">
+              Unknown agents or degraded trust scores (&lt;30) reject authorization immediately with zero debit.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   CENTER VIEW 8: PRODUCTS CATALOG GRID
    ========================================================================= */
 
 function ProductsPanel() {
@@ -780,16 +1463,17 @@ function ProductsPanel() {
 
   const categories = [
     { id: "all", label: "All" },
-    { id: "audio", label: "Audio" },
-    { id: "peripherals", label: "Peripherals" },
-    { id: "power", label: "Power" },
     { id: "cables", label: "Cables" },
-    { id: "storage", label: "Storage" },
-    { id: "accessories", label: "Accessories" },
+    { id: "power", label: "Power" },
+    { id: "peripherals", label: "Peripherals" },
+    { id: "audio", label: "Audio" },
+    { id: "grains", label: "Grains" },
+    { id: "oil", label: "Oils" },
+    { id: "pulses", label: "Pulses" },
   ];
 
   const filteredItems = useMemo(() => {
-    return TECH_CATALOG.filter((item) => {
+    return CATALOG.filter((item) => {
       if (activeCategory !== "all" && item.category !== activeCategory) return false;
       if (inStockOnly && item.stock <= 0) return false;
       if (searchQuery.trim()) {
@@ -807,8 +1491,8 @@ function ProductsPanel() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Products</h1>
-        <p className="text-xs text-zinc-400 mt-1">Browse the ElectroCore verified hardware & accessory catalog.</p>
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Products Catalog</h1>
+        <p className="text-xs text-zinc-400 mt-1">Browse SafeBuy verified hardware & grocery catalog items.</p>
       </div>
 
       {/* Search and Filters Bar */}
@@ -819,7 +1503,7 @@ function ProductsPanel() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search catalog by name, brand, or spec (e.g. 100W, ANC, 4K, mouse)..."
+            placeholder="Search catalog by name, brand, or spec (e.g. 100W, basmati, mouse, 4K)..."
             className="w-full h-11 pl-10 pr-4 rounded-xl bg-[#11131c] border border-white/10 focus:border-emerald-500/50 text-xs text-white placeholder:text-zinc-500 outline-none transition-all"
           />
         </div>
@@ -901,7 +1585,7 @@ function ProductsPanel() {
                 <div className="flex items-center gap-1.5 text-xs">
                   <span className={`size-1.5 rounded-full ${inStock ? "bg-emerald-400" : "bg-red-400"}`} />
                   <span className={inStock ? "text-zinc-300" : "text-red-400"}>
-                    {inStock ? `In stock · ${item.stock} units · ${item.brand}` : `Out of stock · ${item.brand}`}
+                    {inStock ? `In stock · ${item.stock} units` : "Out of stock"}
                   </span>
                 </div>
 
@@ -942,7 +1626,7 @@ function ProductsPanel() {
 }
 
 /* =========================================================================
-   CENTER VIEW 3: PRODUCT COMPARISON VIEW
+   CENTER VIEW 9: PRODUCT COMPARISON VIEW
    ========================================================================= */
 
 function ComparePanel({
@@ -971,7 +1655,7 @@ function ComparePanel({
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Compare</h1>
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Compare Specs</h1>
         <p className="text-xs text-zinc-400 mt-1">Side-by-side product comparison & live specifications.</p>
       </div>
 
@@ -1096,643 +1780,6 @@ function ComparePanel({
 }
 
 /* =========================================================================
-   CENTER VIEW 4: SPENDING POLICY MANDATE PANEL
-   ========================================================================= */
-
-function MandatePanel() {
-  const mandate = useSafeBuy((s) => s.mandate);
-  const [maxRupees, setMaxRupees] = useState(100000);
-  const [ceilingRupees, setCeilingRupees] = useState(50000);
-  const [deny, setDeny] = useState("");
-  const [authorized, setAuthorized] = useState(true);
-
-  async function updateMandate() {
-    await useSafeBuy.getState().createMandate({
-      maxAmountPaise: maxRupees * 100,
-      categories: [...CATEGORIES],
-      brandsAllow: [],
-      brandsDeny: deny.split(",").map((s) => s.trim()).filter(Boolean),
-      maxQuantityPerItem: 5,
-      priceCeilingPerItemPaise: ceilingRupees * 100,
-      validityDays: 30,
-    });
-  }
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Mandate Policy</h1>
-        <p className="text-xs text-zinc-400 mt-1">Configure financial limits and brand constraints for autonomous agent transactions.</p>
-      </div>
-
-      <div className="p-6 rounded-2xl bg-[#0f1118] border border-white/10 space-y-5 shadow-lg">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400">Total Spend Budget (₹)</label>
-            <input
-              type="number"
-              value={maxRupees}
-              onChange={(e) => setMaxRupees(Number(e.target.value))}
-              className="w-full h-10 px-3 rounded-xl bg-[#12141e] border border-white/10 text-xs text-white outline-none focus:border-emerald-500/50 font-mono"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs text-zinc-400">Per-Item Ceiling (₹)</label>
-            <input
-              type="number"
-              value={ceilingRupees}
-              onChange={(e) => setCeilingRupees(Number(e.target.value))}
-              className="w-full h-10 px-3 rounded-xl bg-[#12141e] border border-white/10 text-xs text-white outline-none focus:border-emerald-500/50 font-mono"
-            />
-          </div>
-          <div className="sm:col-span-2 space-y-1.5">
-            <label className="text-xs text-zinc-400">Denied Brands (Comma-separated)</label>
-            <input
-              type="text"
-              value={deny}
-              onChange={(e) => setDeny(e.target.value)}
-              placeholder="e.g. DeniedBrandName"
-              className="w-full h-10 px-3 rounded-xl bg-[#12141e] border border-white/10 text-xs text-white outline-none focus:border-emerald-500/50 font-mono"
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/5">
-          <div className="flex items-center gap-2 text-xs text-zinc-300">
-            <input
-              type="checkbox"
-              checked={authorized}
-              onChange={(e) => setAuthorized(e.target.checked)}
-              id="auth-mandate"
-              className="accent-emerald-500 size-4"
-            />
-            <label htmlFor="auth-mandate">Acknowledge simulated registration authorization</label>
-          </div>
-          <Button
-            onClick={() => void updateMandate()}
-            className="bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-xs px-5 h-9"
-          >
-            Save Mandate Policy
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================================
-   CENTER VIEW 5: ORDERS PANEL
-   ========================================================================= */
-
-function OrdersPanel({ onStartShopping }: { onStartShopping: () => void }) {
-  const merchantOrders = useSafeBuy((s) => s.merchantOrders);
-  const attempts = useSafeBuy((s) => s.attempts);
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Orders</h1>
-        <p className="text-xs text-zinc-400 mt-1">Verified settlement records & Razorpay payment receipts.</p>
-      </div>
-
-      {merchantOrders.length === 0 ? (
-        <div className="p-12 rounded-2xl bg-[#0e1017] border border-white/5 text-center space-y-4">
-          <Store className="size-10 text-zinc-600 mx-auto" />
-          <p className="text-sm text-zinc-400">No orders placed yet. Start a shopping flow to test checkout.</p>
-          <Button onClick={onStartShopping} className="bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-semibold">
-            Start Assistant Flow
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {merchantOrders.map((mo) => {
-            const attempt = attempts.find((a) => a.id === mo.attemptId);
-            const isPaid = mo.status === "paid";
-
-            return (
-              <div
-                key={mo.id}
-                className="p-5 rounded-2xl bg-[#0f1118] border border-white/10 space-y-4 shadow-lg"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/5 pb-3">
-                  <div className="space-y-0.5">
-                    <span className="text-[10px] font-mono uppercase text-zinc-400">ORDER ID</span>
-                    <p className="font-mono text-xs font-bold text-white">{mo.id}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase ${
-                        isPaid
-                          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-                          : "bg-amber-500/15 text-amber-300 border border-amber-500/30"
-                      }`}
-                    >
-                      {mo.status}
-                    </span>
-                    <span className="font-mono font-bold text-sm text-emerald-400">{paiseToInr(mo.totalPaise)}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {mo.lines.map((l, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-xs text-zinc-300">
-                      <span>
-                        {l.name} × {l.quantity}
-                      </span>
-                      <span className="font-mono text-zinc-400">{paiseToInr(l.linePaise)}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-white/5 text-[11px] font-mono text-zinc-400">
-                  <div>
-                    <span>Razorpay Payment: </span>
-                    <span className="text-zinc-200">{attempt?.razorpayPaymentId || "Simulated"}</span>
-                  </div>
-                  <div>
-                    <span>Settled At: </span>
-                    <span className="text-zinc-200">{mo.paidAt ? new Date(mo.paidAt).toLocaleTimeString() : "Pending"}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* =========================================================================
-   CENTER VIEW 6: AUDIT TRAIL PANEL
-   ========================================================================= */
-
-function AuditPanel() {
-  const audit = useSafeBuy((s) => s.audit);
-  const [verifying, setVerifying] = useState(false);
-  const [result, setResult] = useState<ChainVerificationResult | null>(null);
-
-  async function verifyChain() {
-    setVerifying(true);
-    try {
-      const res = await verifyAuditChain(audit);
-      setResult(res);
-    } finally {
-      setVerifying(false);
-    }
-  }
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Audit Ledger</h1>
-          <p className="text-xs text-zinc-400 mt-1">Cryptographic SHA-256 hash-chained log of every state transition.</p>
-        </div>
-        <Button
-          onClick={() => void verifyChain()}
-          disabled={verifying}
-          className="bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-xs h-9 px-4"
-        >
-          {verifying ? "Verifying..." : "Verify Hash Chain"}
-        </Button>
-      </div>
-
-      {result && (
-        <div
-          className={`p-4 rounded-xl border text-xs font-mono ${
-            result.valid
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-              : "bg-red-500/10 border-red-500/30 text-red-300"
-          }`}
-        >
-          {result.valid
-            ? `✓ Hash chain unbroken across all ${result.totalRecords} recorded blocks.`
-            : `✗ Integrity failure: ${result.error}`}
-        </div>
-      )}
-
-      <div className="space-y-2 max-h-[600px] overflow-y-auto">
-        {audit.length === 0 ? (
-          <p className="text-xs text-zinc-400 italic">No audit records recorded yet.</p>
-        ) : (
-          audit
-            .slice()
-            .reverse()
-            .map((rec) => (
-              <div key={rec.id} className="p-3.5 rounded-xl bg-[#0f1118] border border-white/5 space-y-1.5 text-xs font-mono">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-emerald-400 font-bold">
-                    #{rec.seq} {rec.event}
-                  </span>
-                  <span className="text-zinc-500">{new Date(rec.ts).toLocaleTimeString()}</span>
-                </div>
-                <p className="text-zinc-300 font-sans text-xs">{rec.explain}</p>
-                <div className="flex items-center gap-2 text-[10px] text-zinc-500 truncate">
-                  <span>Hash: {rec.hash.slice(0, 16)}...</span>
-                  <span>Prev: {rec.prevHash.slice(0, 16)}...</span>
-                </div>
-              </div>
-            ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================================
-   CENTER VIEW 7: AP2 PRIMITIVES PROTOCOL FLOW (HUMAN-READABLE CARDS)
-   ========================================================================= */
-
-function AP2PrimitivesPanel() {
-  const getAP2Primitives = useSafeBuy((s) => s.getAP2Primitives);
-  const primitives = getAP2Primitives();
-
-  const [showJson1, setShowJson1] = useState(false);
-  const [showJson2, setShowJson2] = useState(false);
-  const [showJson3, setShowJson3] = useState(false);
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">AP2 Protocol Primitives</h1>
-        <p className="text-xs text-zinc-400 mt-1">
-          Agent Payment Protocol (AP2) cryptographically verifiable multi-phase mandates.
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        {/* Step 1: Intent Mandate */}
-        <div className="p-5 rounded-2xl bg-[#0f1118] border border-white/10 space-y-4 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="size-6 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-mono text-xs font-bold">
-                1
-              </span>
-              <h3 className="font-bold text-sm text-white">Intent Mandate</h3>
-            </div>
-            <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
-              Intent Captured
-            </span>
-          </div>
-
-          <p className="text-xs text-zinc-300 leading-relaxed">
-            Converts natural language user instructions into a bounded, cryptographically signed authorization envelope.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-[11px]">
-            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
-              <span className="text-zinc-500 uppercase text-[10px]">MANDATE ID</span>
-              <p className="text-emerald-300 truncate">{primitives.intentMandate?.mandateId || "mandate_active"}</p>
-            </div>
-            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
-              <span className="text-zinc-500 uppercase text-[10px]">CATEGORY SCOPE</span>
-              <p className="text-zinc-200 truncate">
-                {primitives.intentMandate?.allowedCategories?.join(", ") || "audio, peripherals, power"}
-              </p>
-            </div>
-            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
-              <span className="text-zinc-500 uppercase text-[10px]">AUTHORIZED BY</span>
-              <p className="text-zinc-200 truncate">{primitives.intentMandate?.authorizedBy || "buyer_principal"}</p>
-            </div>
-          </div>
-
-          <div className="pt-1">
-            <button
-              onClick={() => setShowJson1(!showJson1)}
-              className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
-            >
-              <span>{showJson1 ? "▾ Hide" : "▸ Show"} Raw Protocol Envelope</span>
-            </button>
-            {showJson1 && (
-              <pre className="mt-2 p-3 rounded-xl bg-black/60 border border-white/10 text-[11px] font-mono text-zinc-300 overflow-x-auto">
-                {JSON.stringify(primitives.intentMandate, null, 2)}
-              </pre>
-            )}
-          </div>
-        </div>
-
-        {/* Step 2: Cart Mandate */}
-        <div className="p-5 rounded-2xl bg-[#0f1118] border border-white/10 space-y-4 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="size-6 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-mono text-xs font-bold">
-                2
-              </span>
-              <h3 className="font-bold text-sm text-white">Cart Mandate</h3>
-            </div>
-            <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
-              SKU Grounded
-            </span>
-          </div>
-
-          <p className="text-xs text-zinc-300 leading-relaxed">
-            Binds the planned purchase to deterministic catalog SKUs, verified inventory reservations, and tamper-proof cart hashes.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-[11px]">
-            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
-              <span className="text-zinc-500 uppercase text-[10px]">ATTEMPT ID</span>
-              <p className="text-emerald-300 truncate">
-                {primitives.cartMandate?.attemptId || "att_ec_grounded"}
-              </p>
-            </div>
-            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
-              <span className="text-zinc-500 uppercase text-[10px]">MERCHANT ORDER</span>
-              <p className="text-zinc-200 truncate">{primitives.cartMandate?.merchantOrderId || "mo_ec_pending"}</p>
-            </div>
-            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
-              <span className="text-zinc-500 uppercase text-[10px]">LOCKED SKUS</span>
-              <p className="text-zinc-200 truncate">
-                {primitives.cartMandate?.lockedSkus?.length || 1} Item(s) Reserved
-              </p>
-            </div>
-          </div>
-
-          <div className="pt-1">
-            <button
-              onClick={() => setShowJson2(!showJson2)}
-              className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
-            >
-              <span>{showJson2 ? "▾ Hide" : "▸ Show"} Raw Protocol Envelope</span>
-            </button>
-            {showJson2 && (
-              <pre className="mt-2 p-3 rounded-xl bg-black/60 border border-white/10 text-[11px] font-mono text-zinc-300 overflow-x-auto">
-                {JSON.stringify(primitives.cartMandate, null, 2)}
-              </pre>
-            )}
-          </div>
-        </div>
-
-        {/* Step 3: Payment Mandate */}
-        <div className="p-5 rounded-2xl bg-[#0f1118] border border-white/10 space-y-4 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="size-6 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-mono text-xs font-bold">
-                3
-              </span>
-              <h3 className="font-bold text-sm text-white">Payment Mandate</h3>
-            </div>
-            <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold uppercase">
-              Settlement Rail
-            </span>
-          </div>
-
-          <p className="text-xs text-zinc-300 leading-relaxed">
-            Coordinates the two-phase commit pre-debit dwell period and executes Razorpay settlement rails with cryptographic signature validation.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-[11px]">
-            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
-              <span className="text-zinc-500 uppercase text-[10px]">NOTICE ID</span>
-              <p className="text-emerald-300 truncate">{primitives.paymentMandate?.noticeId || "nt_ec_active"}</p>
-            </div>
-            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
-              <span className="text-zinc-500 uppercase text-[10px]">RECONCILIATION</span>
-              <p className="text-zinc-200">{primitives.paymentMandate?.reconciliationStatus || "pending"}</p>
-            </div>
-            <div className="p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-0.5">
-              <span className="text-zinc-500 uppercase text-[10px]">RAIL</span>
-              <p className="text-emerald-300">Razorpay v1</p>
-            </div>
-          </div>
-
-          <div className="pt-1">
-            <button
-              onClick={() => setShowJson3(!showJson3)}
-              className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition-colors"
-            >
-              <span>{showJson3 ? "▾ Hide" : "▸ Show"} Raw Protocol Envelope</span>
-            </button>
-            {showJson3 && (
-              <pre className="mt-2 p-3 rounded-xl bg-black/60 border border-white/10 text-[11px] font-mono text-zinc-300 overflow-x-auto">
-                {JSON.stringify(primitives.paymentMandate, null, 2)}
-              </pre>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================================
-   CENTER VIEW 8: FAILURE LAB & SECURITY INJECTION PANEL
-   ========================================================================= */
-
-function LabPanel() {
-  const labInject = useSafeBuy((s) => s.labInject);
-  const setLabInject = useSafeBuy((s) => s.setLabInject);
-  const runInstruction = useSafeBuy((s) => s.runInstruction);
-
-  const attacks: { id: LabInject; title: string; desc: string; prompt: string }[] = [
-    {
-      id: "none",
-      title: "Normal Execution",
-      desc: "Standard compliant operations without malicious injection.",
-      prompt: "I need wireless headphones under ₹30,000",
-    },
-    {
-      id: "semantic_mismatch",
-      title: "Semantic Prompt Injection",
-      desc: "Agent attempts to swap item for unauthorized chocolate confectionary.",
-      prompt: "Get 5 kg atta with Cadbury chocolate",
-    },
-    {
-      id: "stock_race",
-      title: "Stock Race Simulation",
-      desc: "Requested SKU drops to 0 inventory immediately prior to reservation.",
-      prompt: "Is the Logitech MX Master 3S in stock?",
-    },
-    {
-      id: "replay_attack",
-      title: "Replay Attack Simulation",
-      desc: "Injects forged HMAC signatures to test cryptographic rejection.",
-      prompt: "Buy Sony WH-1000XM5 headphones",
-    },
-    {
-      id: "untrusted_agent",
-      title: "Untrusted Agent Delegation",
-      desc: "Tests rejection when agent trust score falls below safe threshold (<30).",
-      prompt: "Buy Keychron K3 Max keyboard",
-    },
-  ];
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Failure Lab & Security</h1>
-        <p className="text-xs text-zinc-400 mt-1">Simulate adversarial attacks, stock races, and policy violations.</p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {attacks.map((att) => {
-          const isSelected = labInject === att.id;
-          return (
-            <div
-              key={att.id}
-              className={`p-5 rounded-2xl bg-[#0f1118] border transition-all space-y-3 ${
-                isSelected ? "border-amber-500/50 bg-amber-500/5" : "border-white/10 hover:border-white/20"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-sm text-white">{att.title}</h3>
-                <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded uppercase font-bold ${
-                    isSelected ? "bg-amber-500/20 text-amber-300" : "bg-white/5 text-zinc-400"
-                  }`}
-                >
-                  {isSelected ? "Active" : "Ready"}
-                </span>
-              </div>
-              <p className="text-xs text-zinc-400 leading-relaxed">{att.desc}</p>
-              <div className="flex items-center gap-2 pt-1">
-                <Button
-                  onClick={() => setLabInject(att.id)}
-                  variant={isSelected ? "default" : "outline"}
-                  className="text-xs h-8 flex-1"
-                >
-                  {isSelected ? "Injection Armed" : "Select Test"}
-                </Button>
-                <Button
-                  onClick={() => {
-                    setLabInject(att.id);
-                    void runInstruction(att.prompt);
-                  }}
-                  className="text-xs h-8 bg-emerald-500 hover:bg-emerald-600 text-black font-semibold"
-                >
-                  Run Attack
-                </Button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================================
-   CENTER VIEW 9: AGENT REGISTRY & DELEGATED IDENTITY PANEL
-   ========================================================================= */
-
-function AgentRegistryPanel() {
-  const agentIdentity = useSafeBuy((s) => s.agentIdentity);
-  const registeredAgents = listRegisteredAgents();
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">Agent Registry & Delegation</h1>
-        <p className="text-xs text-zinc-400 mt-1">
-          Cryptographic Ed25519 identity, capability scopes, and trust reputation governance.
-        </p>
-      </div>
-
-      {/* Active Buyer Agent Identity Card */}
-      <div className="p-6 rounded-2xl bg-[#0f1118] border border-white/10 space-y-5 shadow-lg">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-sm">
-              <Users className="size-5" />
-            </div>
-            <div>
-              <h2 className="font-bold text-base text-white">{agentIdentity.operatorName}</h2>
-              <p className="font-mono text-xs text-zinc-400">{agentIdentity.agentId}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono text-xs font-bold">
-              Trust Score: {agentIdentity.trustScore}/100
-            </span>
-            <span className="px-2.5 py-1 rounded-full bg-white/5 text-zinc-300 border border-white/10 font-mono text-xs uppercase">
-              {agentIdentity.status}
-            </span>
-          </div>
-        </div>
-
-        {/* Visual Trust Score Progress Bar */}
-        <div className="space-y-1.5 font-mono text-[11px]">
-          <div className="flex justify-between text-zinc-400">
-            <span>REPUTATION TIER: HIGH TRUST</span>
-            <span className="text-emerald-400 font-bold">{agentIdentity.trustScore}% Verified</span>
-          </div>
-          <div className="h-2 w-full rounded-full bg-white/5 overflow-hidden border border-white/10">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300 transition-all duration-500"
-              style={{ width: `${agentIdentity.trustScore}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Identity Details Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
-          <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
-            <span className="text-[10px] text-zinc-500 uppercase font-bold">ED25519 PUBLIC KEY</span>
-            <p className="text-emerald-300 break-all text-[11px]">{agentIdentity.publicKey}</p>
-          </div>
-          <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
-            <span className="text-[10px] text-zinc-500 uppercase font-bold">DELEGATION BOUNDS</span>
-            <p className="text-zinc-200">Max ₹50,000 / txn · Dwell dwell required</p>
-          </div>
-        </div>
-
-        {/* Capability Claims */}
-        <div className="space-y-2 pt-2 border-t border-white/5">
-          <p className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 font-semibold">
-            GRANTED CAPABILITY CLAIMS
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {[
-              "catalog:read",
-              "intent:parse_bounded",
-              "cart:propose",
-              "payment:dwell_authorize",
-              "audit:chain_commit",
-            ].map((claim) => (
-              <span
-                key={claim}
-                className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-zinc-300 font-mono text-[11px]"
-              >
-                ✓ {claim}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Governance & Trust Safeguards Breakdown */}
-      <div className="p-5 rounded-2xl bg-[#0f1118] border border-white/10 space-y-3 shadow-lg">
-        <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-emerald-400">
-          Agent Governance & Anti-Gaming Rules
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-[11px] text-zinc-300">
-          <div className="p-3 rounded-xl bg-black/30 border border-white/5 space-y-1">
-            <span className="text-white font-bold">Volume Dampening</span>
-            <p className="text-zinc-400 text-[10px] leading-relaxed">
-              Rapid sub-second micro transactions damp reputation gains to prevent trust gaming.
-            </p>
-          </div>
-          <div className="p-3 rounded-xl bg-black/30 border border-white/5 space-y-1">
-            <span className="text-white font-bold">Replay Window</span>
-            <p className="text-zinc-400 text-[10px] leading-relaxed">
-              Strict 30-second timestamp freshness and nonce deduplication prevents transaction replay.
-            </p>
-          </div>
-          <div className="p-3 rounded-xl bg-black/30 border border-white/5 space-y-1">
-            <span className="text-white font-bold">Fail-Closed Default</span>
-            <p className="text-zinc-400 text-[10px] leading-relaxed">
-              Unknown agents or degraded trust scores (&lt;30) reject authorization immediately with zero debit.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================================
    RIGHT SIDEBAR: TELEMETRY, PROTOCOL PROGRESS & SESSION ACTIVITY
    ========================================================================= */
 
@@ -1818,7 +1865,7 @@ function RightTelemetryPanel({ onJumpTab }: { onJumpTab: (t: MainTab) => void })
           </div>
           <div className="p-2.5 rounded-lg bg-[#11131c] border border-white/5 space-y-0.5">
             <span className="text-[9px] text-zinc-500 uppercase">GROUNDED SKUS</span>
-            <p className="font-bold text-white">{TECH_CATALOG.length} Hardware</p>
+            <p className="font-bold text-white">{CATALOG.length} Items</p>
           </div>
           <div className="p-2.5 rounded-lg bg-[#11131c] border border-white/5 space-y-0.5">
             <span className="text-[9px] text-zinc-500 uppercase">PAYMENT RAIL</span>
@@ -1943,7 +1990,7 @@ function GateOverlay() {
         <div className="grid grid-cols-3 gap-2 font-mono text-[11px]">
           <div className="p-2.5 rounded-lg bg-[#11131c] border border-white/5 space-y-0.5">
             <span className="text-[9px] text-zinc-500 uppercase">MANDATE CAP</span>
-            <p className="text-zinc-300">{mandate ? paiseToInr(mandate.maxAmountPaise) : "₹1,00,000"}</p>
+            <p className="text-zinc-300">{mandate ? paiseToInr(mandate.maxAmountPaise) : "₹1,500"}</p>
           </div>
           <div className="p-2.5 rounded-lg bg-[#11131c] border border-white/5 space-y-0.5">
             <span className="text-[9px] text-zinc-500 uppercase">THIS DEBIT</span>
@@ -1999,7 +2046,7 @@ function GateOverlay() {
   );
 }
 
-/* Helper to trigger Razorpay checkout or graceful offline sandbox settlement */
+/* Helper to trigger Razorpay checkout strictly with server Order, failing closed honestly without simulation */
 async function openLiveCheckout() {
   const st = useSafeBuy.getState();
   const cart = st.pendingCart;
@@ -2022,10 +2069,7 @@ async function openLiveCheckout() {
     });
 
     if (!order.ok || !order.orderId) {
-      // If live keys are not configured, simulate valid Razorpay test settlement for seamless judge evaluation
-      const simPaymentId = `pay_sim_${newId("rzp").slice(0, 14)}`;
-      const simOrderId = `order_sim_${newId("rzp").slice(0, 14)}`;
-      await st.handleHandlerReceived(simPaymentId, simOrderId, "sim_signature_ok");
+      await st.failClosed(order.error ?? "Razorpay Order creation failed. Live or test keys required.");
       return;
     }
 

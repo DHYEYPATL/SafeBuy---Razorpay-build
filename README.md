@@ -1,9 +1,9 @@
-# ElectroCore (SafeBuy) — Bounded AI Commerce Assistant
+# SafeBuy — Bounded AI Commerce Assistant
 
 > **Track 01: Agentic Commerce Submission (Option B)**  
 > *Making merchants transactable end-to-end by a bounded AI buyer with deterministic policy guardrails and real Razorpay test-mode execution.*
 
-ElectroCore (powered by SafeBuy) is a bounded AI purchasing agent that enables autonomous cart planning while enforcing strict spending policies, deterministic semantic guardrails, and compliance with Indian payment regulations.
+SafeBuy is a bounded AI purchasing agent that enables autonomous cart planning while enforcing strict spending policies, deterministic semantic guardrails, and compliance with Indian payment regulations.
 
 ---
 

@@ -180,17 +180,17 @@ function delay(ms: number) {
 
 function getInitialMandate(): Mandate {
   return {
-    id: "man_electrocore_live",
+    id: "man_safebuy_default",
     status: "active",
     merchantId: MERCHANT_ID,
-    maxAmountPaise: 10_000_000, // ₹1,00,000 budget
-    remainingPaise: 10_000_000,
+    maxAmountPaise: 150_000, // ₹1,500 standard demo budget
+    remainingPaise: 150_000,
     spentPaise: 0,
     categories: [...CATEGORIES],
     brandsAllow: [],
     brandsDeny: [],
-    maxQuantityPerItem: 10,
-    priceCeilingPerItemPaise: 5_000_000, // ₹50,000 ceiling
+    maxQuantityPerItem: 5,
+    priceCeilingPerItemPaise: 150_000, // ₹1,500 per-item ceiling
     createdAt: nowIso(),
     validUntil: new Date(Date.now() + 30 * 86400000).toISOString(),
     revokedAt: null,
@@ -204,9 +204,9 @@ export const useSafeBuy = create<SafeBuyState>()(
     (set, get) => ({
       mandate: getInitialMandate(),
       agentIdentity: lookupAgentIdentity("agent_safebuy_default") || {
-        agentId: "agent_electrocore_v2",
+        agentId: "agent_safebuy_default",
         publicKey: "pub_ed25519_demo_key_7788",
-        operatorName: "ElectroCore Agentic Buyer",
+        operatorName: "SafeBuy Reference Buyer",
         actingFor: null,
         registeredAt: new Date().toISOString(),
         trustScore: 92,
@@ -231,7 +231,7 @@ export const useSafeBuy = create<SafeBuyState>()(
       hasSecret: false,
       isConfigured: false,
       confirmedPaymentIds: [],
-      lastExplain: "Connected to ElectroCore AI Commerce Assistant.",
+      lastExplain: "Connected to SafeBuy AI Commerce Assistant.",
       stockOverride: {},
       hydrateOk: false,
 
@@ -335,7 +335,7 @@ export const useSafeBuy = create<SafeBuyState>()(
 
       ensureDefaultMandate: () => {
         const current = get().mandate;
-        if (!current || current.status !== "active" || current.priceCeilingPerItemPaise < 3_000_000) {
+        if (!current || current.status !== "active") {
           set({ mandate: getInitialMandate() });
         }
       },
@@ -1439,7 +1439,7 @@ export const useSafeBuy = create<SafeBuyState>()(
 
         const isLateReconcile = attempt?.phase === "failed";
 
-        const confirmedProductName = cart.lines[0]?.name ?? "ElectroCore Product";
+        const confirmedProductName = cart.lines[0]?.name ?? "SafeBuy Product";
         const orderIdClean = orderId ?? attempt?.razorpayOrderId ?? `order_${newId("rzp").slice(0, 16)}`;
         const auditEvents = [
           { event: "INTENT_CREATED", time: new Date(Date.now() - 30000).toLocaleTimeString() },

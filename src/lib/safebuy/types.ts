@@ -1,7 +1,7 @@
-export const AFA_EXEMPT_PAISE = 5_000_000; // ₹50,000 ceiling for high-end electronics
+export const AFA_EXEMPT_PAISE = 1_500_000; // ₹15,000 regulatory ceiling for AFA exemption (RBI compliance)
 export const DEMO_NOTIFY_WINDOW_MS = 8_000; // 8 seconds for readable dwell
-export const MERCHANT_ID = "electrocore-ai";
-export const MERCHANT_NAME = "ElectroCore";
+export const MERCHANT_ID = "safebuy-store";
+export const MERCHANT_NAME = "SafeBuy";
 
 export const CATEGORIES = [
   "audio",

@@ -412,9 +412,9 @@ export function getItem(sku: string) {
 export function merchantMeta() {
   return {
     id: MERCHANT_ID,
-    name: "ElectroCore Systems",
+    name: "SafeBuy Store",
     city: "Bengaluru",
-    note: "AI Commerce Engine · Grounded Razorpay Test Mode storefront.",
+    note: "Bounded AI Buyer · Grounded Razorpay Test Mode storefront.",
   };
 }
 

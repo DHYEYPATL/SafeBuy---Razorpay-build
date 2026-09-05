@@ -3,7 +3,7 @@ import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "ElectroCore · AI Commerce Assistant";
+const APP_NAME = "SafeBuy · Bounded AI Commerce Assistant";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -12,7 +12,7 @@ export const Route = createRootRoute({
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: APP_NAME },
       { name: "theme-color", content: "#090a0f" },
-      { name: "description", content: "ElectroCore: AI-driven agentic commerce platform with Razorpay checkout and audit security." },
+      { name: "description", content: "SafeBuy: Bounded AI-driven agentic commerce platform with Razorpay checkout, cryptographic audit ledger, and RBI compliance." },
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
